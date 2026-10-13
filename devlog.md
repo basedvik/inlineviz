@@ -380,3 +380,8 @@ tool batch, and across Claude's self-started follow-up turn).
 **Open:** subagent lanes (data is there: per-agent tool events); the Claude Code context window size is
 unknown (shows ~200k); `MessageDisplay` might stream in a future Claude Code version, in which case decode
 would become real.
+- **Install-size fix (found by a real isolated install from GitHub):** with the repo root as the plugin, Claude
+  Code saw `package.json` + `bun.lock` and installed every devDependency: **147 MB per user**. The plugin now
+  lives in `claude-code/` (manifest, hooks, commands, launcher, a copy of `dist/inlineviz.mjs`; no package.json
+  or lockfile) and the root marketplace points at `./claude-code`: **184 KB**. `build:cli` refreshes the copy;
+  tests guard the copy and the absence of dependency manifests.

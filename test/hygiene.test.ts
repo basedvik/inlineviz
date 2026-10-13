@@ -35,3 +35,17 @@ describe("hygiene", () => {
     expect(files(CORE).length).toBeGreaterThan(10);
   });
 });
+
+describe("Claude Code plugin packaging", () => {
+  const root = resolve(import.meta.dir, "..");
+  test("PluginCliBundleMatchesBuild (run `bun run build:cli` after source changes)", () => {
+    const a = readFileSync(join(root, "dist", "inlineviz.mjs"));
+    const b = readFileSync(join(root, "claude-code", "dist", "inlineviz.mjs"));
+    expect(Buffer.compare(a, b)).toBe(0);
+  });
+  test("PluginFolderHasNoDependencyManifests (installs stay tiny)", () => {
+    for (const f of ["package.json", "bun.lock", "package-lock.json", "node_modules"]) {
+      expect(() => statSync(join(root, "claude-code", f))).toThrow();
+    }
+  });
+});

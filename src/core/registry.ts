@@ -77,6 +77,26 @@ export function archFor(
   return UNKNOWN;
 }
 
+// Trailing tokens that don't help tell models apart at a glance: precision / quantization /
+// packaging / finetune-flavor suffixes. Stripped repeatedly from the END only.
+const NOISE_SUFFIX =
+  /-(?:bf16|fp16|f16|fp32|fp8|f8|int8|int4|w\d+a\d+|\d+(?:\.\d+)?bpw|\d+-?bits?|q\d+(?:_k)?(?:_[a-z0-9]+)*|iq\d+[a-z0-9_]*|awq|gptq|exl2|gguf|mlx|serve|mixed(?:-\d+)*|dwq|ud|mtp|instruct|chat|it|hf|uncensored|abliterated|heretic|preserved|native)$/i;
+
+/**
+ * A compact display name for narrow layouts: provider prefix and noise suffixes removed,
+ * e.g. "mlx-community/Qwen3.8-27B-bf16" → "qwen3.8-27b",
+ * "ddalcu/Qwen3.8-Flash-Next-MLX-Serve-mixed-4-8bit" → "qwen3.8-flash-next".
+ */
+export function shortModelName(modelID: string): string {
+  let s = normalizeModelID(modelID);
+  for (let i = 0; i < 12; i++) {
+    const next = s.replace(NOISE_SUFFIX, "");
+    if (next === s || next.length < 4) break;
+    s = next;
+  }
+  return s;
+}
+
 /** Short header text: "MoE 128e/8a · 94L", "dense · 80L", "arch unknown". */
 export function archSummary(a: Arch): string {
   switch (a.kind) {

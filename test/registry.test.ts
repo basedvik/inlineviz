@@ -61,3 +61,18 @@ describe("registry", () => {
     expect(archSummary(archFor(m("claude")))).toBe("arch unknown");
   });
 });
+
+describe("shortModelName (compact HUD)", async () => {
+  const { shortModelName } = await import("../src/core/registry.ts");
+  const cases: [string, string][] = [
+    ["mlx-community/Qwen3.8-27B-bf16", "qwen3.8-27b"],
+    ["ddalcu/Qwen3.8-Flash-Next-MLX-Serve-mixed-4-8bit", "qwen3.8-flash-next"],
+    ["30cmtonyfaker/Qwen3.8-Flash-Next-REAP-288-MLX-Serve-4bit-MTP", "qwen3.8-flash-next-reap-288"],
+    ["Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-Q4_K_M", "qwen3.6-35b-a3b"],
+    ["gemma-3-27b-it", "gemma-3-27b"],
+    ["Qwen3-30B-A3B-Instruct-2507", "qwen3-30b-a3b-instruct-2507"], // only trailing noise is stripped
+    ["claude-sonnet-4-5", "claude-sonnet-4-5"],
+    ["gpt-5", "gpt-5"],
+  ];
+  for (const [id, want] of cases) test(`${id} → ${want}`, () => expect(shortModelName(id)).toBe(want));
+});

@@ -295,3 +295,24 @@ describe("context grid fill order", () => {
     expect(gridCell(L.grid, L.grid.h)).toMatchObject({ col: 1, row: 0 });
   });
 });
+
+describe("narrow HUD labels", () => {
+  test("SidebarShowsShortModelNameUncut (user screenshot: 37×14, mlx-community/Qwen3.8-27B-bf16)", () => {
+    const sigs: Signal[] = [
+      { t: "model", ts: 0, model: { providerID: "flashnext", modelID: "mlx-community/Qwen3.8-27B-bf16", contextLimit: 262144 } },
+      { t: "step.end", ts: 10, usage: usage({ input: 4000, cacheRead: 54000 }) },
+      { t: "step.start", ts: 100 },
+      ...Array.from({ length: 30 }, (_, i) => ({ t: "delta", ts: 900 + i * 90, kind: "text", chars: 400 } as Signal)), // ~100+ tok/s
+    ];
+    const top = renderViz(37, 14, simAt(sigs, 60), PAL, OPTS).toText().split("\n")[0];
+    expect(top).toContain("┤qwen3.8-27b├");
+    expect(top).toContain("DECODE");
+  });
+
+  test("TruncatedLabelsEndWithEllipsis", () => {
+    const sigs: Signal[] = [{ t: "model", ts: 0, model: { providerID: "p", modelID: "some-org/an-extremely-long-model-name-that-cannot-fit-here-v9" } }];
+    const top = renderViz(36, 12, simAt(sigs, 2), PAL, OPTS).toText().split("\n")[0];
+    expect(top).toContain("…├");
+    expect([...top].length).toBe(36);
+  });
+});

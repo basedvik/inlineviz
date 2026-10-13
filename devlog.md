@@ -313,3 +313,15 @@ Evidence:
 
 Open: llama.cpp-only setups still need the `arch` option (llama.cpp doesn't expose layer counts; reading
 the GGUF header locally would fix it when the file is on the same machine).
+
+## 2026-10-13: sidebar label truncation
+
+User screenshot (sidebar, 37 cols): the model name read `qwen3.8-27b-bf`, i.e. `qwen3.8-27b-bf16` silently cut to
+fit beside `▸ DECODE 11t/s`, which looked like a glitch.
+- Compact layouts now use `shortModelName()` (registry.ts): provider prefix plus trailing noise suffixes
+  (precision/quant/packaging/flavor: `-bf16`, `-q4_k_m`, `-8bit`, `-mlx`, `-serve`, `-mixed-4`, `-instruct`,
+  `-it`, `-uncensored`, …) stripped from the end only, so `-reap-288` and `-2507` survive. Full width
+  still shows the whole ID.
+- Any truncated HUD segment now ends in `…`.
+- Tests: 8 real-ID cases + `SidebarShowsShortModelNameUncut` (the screenshot case at 100+ tok/s) +
+  `TruncatedLabelsEndWithEllipsis`. 137 pass; goldens unchanged.

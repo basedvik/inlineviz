@@ -748,6 +748,17 @@ function archFor(model, overrides, discovered) {
       return { ...r.arch, source: "table" };
   return UNKNOWN;
 }
+var NOISE_SUFFIX = /-(?:bf16|fp16|f16|fp32|fp8|f8|int8|int4|w\d+a\d+|\d+(?:\.\d+)?bpw|\d+-?bits?|q\d+(?:_k)?(?:_[a-z0-9]+)*|iq\d+[a-z0-9_]*|awq|gptq|exl2|gguf|mlx|serve|mixed(?:-\d+)*|dwq|ud|mtp|instruct|chat|it|hf|uncensored|abliterated|heretic|preserved|native)$/i;
+function shortModelName(modelID) {
+  let s = normalizeModelID(modelID);
+  for (let i = 0;i < 12; i++) {
+    const next = s.replace(NOISE_SUFFIX, "");
+    if (next === s || next.length < 4)
+      break;
+    s = next;
+  }
+  return s;
+}
 function archSummary(a) {
   switch (a.kind) {
     case "moe":
@@ -1752,14 +1763,15 @@ function placeSegs(f, y, segs, x0, x1, border) {
   const left = segs.filter((sg) => chosen.has(sg) && sg.side === "l");
   const right = segs.filter((sg) => chosen.has(sg) && sg.side === "r");
   let x = x0;
+  const fit = (t, n) => cpLen(t) <= n ? t : n <= 1 ? truncate(t, n) : truncate(t, n - 1) + "\u2026";
   for (const sg of left) {
-    const txt = truncate(sg.text, width.get(sg));
+    const txt = fit(sg.text, width.get(sg));
     x = embedSegment(f, y, x, txt, "\u2524", "\u251C", border, sg.fg, sg.bold) + 1;
   }
   let xr = x1;
   for (let i = right.length - 1;i >= 0; i--) {
     const sg = right[i];
-    const txt = truncate(sg.text, width.get(sg));
+    const txt = fit(sg.text, width.get(sg));
     const start = xr - (cpLen(txt) + 2) + 1;
     embedSegment(f, y, start, txt, "\u2524", "\u251C", border, sg.fg, sg.bold);
     xr = start - 2;
@@ -1836,7 +1848,7 @@ function drawHud(f, L, s, pal, opts, newest, cv, border, failI) {
       phaseColor = pal.error;
       break;
   }
-  const modelName = s.model ? normalizeModelID(s.model.modelID) : "no model yet";
+  const modelName = s.model ? full ? normalizeModelID(s.model.modelID) : shortModelName(s.model.modelID) : "no model yet";
   const top = [
     { text: full ? `${modelName} \xB7 ${archSummary(arch)}${archSourceTag(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
     { text: phaseText, fg: phaseColor, side: "r", prio: 3, bold: true }

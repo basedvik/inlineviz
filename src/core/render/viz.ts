@@ -6,7 +6,7 @@
 
 import { DEFAULT, Frame, type Rect, cpLen, drawRoundedBox, embedSegment, truncate } from "../frame.ts";
 import { type Palette, shade } from "../palette.ts";
-import { type Arch, archSummary, normalizeModelID } from "../registry.ts";
+import { type Arch, archSummary, normalizeModelID, shortModelName } from "../registry.ts";
 import { type ContextView, type Pulse, type SimState, TICK_HZ, contextView } from "../sim/sim.ts";
 import { BrailleCanvas } from "./braille.ts";
 import { hash32, hashStr, mulberry32, pickK, pickRecent } from "./illustrate.ts";
@@ -483,14 +483,16 @@ export function placeSegs(f: Frame, y: number, segs: Seg[], x0: number, x1: numb
   const left = segs.filter((sg) => chosen.has(sg) && sg.side === "l");
   const right = segs.filter((sg) => chosen.has(sg) && sg.side === "r");
   let x = x0;
+  // A cut label ends in "…" so it reads as deliberate, not as a rendering glitch.
+  const fit = (t: string, n: number) => (cpLen(t) <= n ? t : n <= 1 ? truncate(t, n) : truncate(t, n - 1) + "…");
   for (const sg of left) {
-    const txt = truncate(sg.text, width.get(sg)!);
+    const txt = fit(sg.text, width.get(sg)!);
     x = embedSegment(f, y, x, txt, "┤", "├", border, sg.fg, sg.bold) + 1;
   }
   let xr = x1;
   for (let i = right.length - 1; i >= 0; i--) {
     const sg = right[i];
-    const txt = truncate(sg.text, width.get(sg)!);
+    const txt = fit(sg.text, width.get(sg)!);
     const start = xr - (cpLen(txt) + 2) + 1;
     embedSegment(f, y, start, txt, "┤", "├", border, sg.fg, sg.bold);
     xr = start - 2;
@@ -571,7 +573,8 @@ function drawHud(
       break;
   }
 
-  const modelName = s.model ? normalizeModelID(s.model.modelID) : "no model yet";
+  // Narrow layouts get the short name ("qwen3.8-27b"); full width keeps the whole ID.
+  const modelName = s.model ? (full ? normalizeModelID(s.model.modelID) : shortModelName(s.model.modelID)) : "no model yet";
   const top: Seg[] = [
     { text: full ? `${modelName} · ${archSummary(arch)}${archSourceTag(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
     { text: phaseText, fg: phaseColor, side: "r", prio: 3, bold: true },

@@ -226,3 +226,21 @@ only 1.18.32, the `/opt/homebrew/bin/opencode` symlink resolves to it, `brew inf
 - No `-tmux` split helper; no `strip` surface verified live (unit-tested via `screens -size 40x1`).
 - `session.next.*` fast path is untested against a build that emits it.
 - GLM-4.5 registry row is marked `verify`.
+
+## Packaging for other people (inlineviz)
+
+- Renamed the package / plugin id / CLI to **`inlineviz`** (matches the GitHub repo; the npm name
+  was free on 2026-10-12). Commands are `inlineviz.toggle` / `inlineviz.demo`; the slash commands
+  are still `/viz` and `/viz-demo`. The debug env var is `INLINEVIZ_DEBUG` (`OPENCODEVIZ_DEBUG` is
+  still accepted).
+- `bun run build` → `dist/tui.js` (67 KB ESM, target bun). Externals: `@opentui/*`, `solid-js`,
+  `@opencode-ai/*`, so they resolve to OpenCode's runtime copies. `exports` `.` and `./tui` point at
+  `dist/tui.js`. **`dist/` is committed** so `github:basedvik/inlineviz` installs work without a build step
+  (OpenCode installs plugins with npm's Arborist; there's deliberately no `prepare` script).
+- `prepublishOnly` = build + test + typecheck. `files` = dist, src, README, LICENSE (npm pack: 61.5 KB).
+- `@opencode-ai/sdk` moved to `dependencies` (the CLI's `attach` needs it).
+- Added an MIT LICENSE (holder: the GitHub handle `basedvik`) and rewrote the README for users:
+  install via `opencode plugin inlineviz` / `tui.json` / GitHub, plus options, uninstall,
+  troubleshooting, and the measured CPU cost.
+- Local dev: `tui.json` → `file:///…/opencodeviz` now loads `dist/tui.js`, so **run `bun run build`
+  after source changes**.

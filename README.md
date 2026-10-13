@@ -1,8 +1,8 @@
-# opencodeviz
+# inlineviz
 
-A live terminal animation of what an LLM is doing **right now**: prefill, decode, reasoning, tool calls,
-context fill, and (for open-weight models) its real architecture shape. It runs **inside OpenCode**
-(sidebar + `/viz` overlay) or **standalone** in any terminal.
+A live terminal animation of what your LLM is doing **right now**, inside [OpenCode](https://opencode.ai):
+prefill, decode, reasoning vs. answer, tool calls, context fill and cache, and (for known open-weight
+models) the model's real architecture: layers, experts, active experts.
 
 ```
 ╭─┤qwen3-235b-a22b · MoE 128e/8a · 94L├─────────────┤▸ REASONING  L 1/94  71 tok/s  ttft 1.4s├─╮
@@ -14,108 +14,134 @@ context fill, and (for open-weight models) its real architecture shape. It runs 
 │  …                                                                                           │
 ╰─┤ctx ▓······· 94% cached · 22k/131k├─┤think ~402 · out ~0├────────────┤illustrative routing├─╯
 ```
-*(Monochrome text dump. The real thing is truecolor: violet reasoning, amber output, a blue context grid,
-salmon/crimson/sage/teal experts, and pink/blue projection lines.)*
+*(A monochrome text dump. In your terminal it's truecolor: violet reasoning, amber answers, a blue
+context grid, colored experts.)*
 
-Left to right: **context window** (each cell is N tokens; `▓` cached, `▒` fresh, colored = generated this
-turn) → **router fan** → **experts** (`⬢`, exactly *k* light per token for MoE models) → **hidden state**
-→ **logit fan** → **output nodes** (`◉` = sampled token). A comet carries each sampled token back into the
-grid: that loop is autoregressive decoding.
+Left to right: **your context window** (each cell is N tokens: `▓` cached, `▒` fresh, colored = written
+this turn) → **router** → **experts** (`⬢`, exactly *k* light per token on MoE models) → **hidden state**
+→ **output** (`◉` = the token being sampled). Each sampled token flies back into the context grid,
+because that loop *is* how an LLM writes.
 
-## What's real vs. illustrative
+## Install
 
-| Real (from your harness's events) | Illustrative (seeded, labeled on screen) |
-|---|---|
-| Phase: idle / prefill / decode / tool / retry / error | *Which* experts light (the count *k* is real) |
-| Time to first token | Which grid cells get the orange "attention" dots |
-| Tokens/sec (streamed deltas, calibrated against real usage) | Which hidden nodes / output nodes light |
-| Reasoning vs. answer text | Layer-sweep pace (real layers take microseconds) |
-| Tool name, duration, success/failure | Everything mid-network for closed models |
-| Input / output / reasoning / cache-read / cache-write tokens | |
-| Context limit and fill | |
-| Layers, experts, active experts (public model cards) | |
+Requires OpenCode **1.18 or newer** (tested on 1.18.32).
 
-Every boxed frame carries a label in its bottom border: `illustrative routing`, or `architecture unknown`
-for closed models (Claude, GPT, Gemini, …) and anything not in the registry.
+**Option A, from npm** (once published):
 
-## Inside OpenCode
-
-Add it to **`~/.config/opencode/tui.json`** (TUI plugins live there; server plugins live in `opencode.jsonc`):
-
-```json
-{
-  "plugin": [
-    "opencode-tps-meter@latest",
-    ["file:///Users/vikrambhaduri/occ/opencodeviz", { "surface": "sidebar" }]
-  ]
-}
+```sh
+opencode plugin inlineviz
 ```
 
-Restart OpenCode. Then:
+or add it to `~/.config/opencode/tui.json` yourself:
 
-- **Sidebar:** a compact viz above OpenCode's Context section (inside a session).
-- **`/viz`:** opens a full-size overlay; running `/viz` again toggles it closed. OpenCode dialogs also
-  close with `esc`, but closing hasn't been verified on screen yet (see `devlog.md`).
-- **`/viz-demo`:** plays the built-in demo scripts in the overlay (no tokens spent).
+```json
+{ "plugin": ["inlineviz@latest"] }
+```
 
-Options (the second element of the plugin tuple):
+**Option B, straight from GitHub** (works today, no npm needed). In `~/.config/opencode/tui.json`:
+
+```json
+{ "plugin": ["github:basedvik/inlineviz"] }
+```
+
+If you already have other TUI plugins, add `inlineviz` to the existing `plugin` list rather than replacing it.
+Then **restart OpenCode**.
+
+> TUI plugins go in **`tui.json`**, not `opencode.json`. The visualizer draws inside OpenCode's interface,
+> so it's a TUI plugin.
+
+## Use it
+
+- **Sidebar:** open any session and a compact visualizer sits in the right sidebar, above *Context*.
+  If you don't see the sidebar, widen the terminal (or toggle the sidebar from `ctrl+p`).
+- **`/viz`:** a big full-size view. Run `/viz` again to close it.
+- **`/viz-demo`:** plays built-in demo sessions (MoE, dense, closed models, tool calls, errors) without
+  spending any tokens.
+
+Send a prompt and watch it go: **PREFILL** while the model reads your context → **THINK** (violet) while it
+reasons → **DECODE** (amber) as it answers → `⚙ tool` while tools run → idle.
+
+## What's real and what's illustrative
+
+| Real (from OpenCode's events) | Illustrative (labeled on screen) |
+|---|---|
+| Phase: prefill / thinking / answering / tools / retry / error | *Which* experts light up (how *many* is real) |
+| Time to first token, tokens/sec | Which context cells get the orange "attention" dots |
+| Context size, cache hits, context limit | Which hidden and output nodes light |
+| Tool name, duration, success/failure | The layer-by-layer sweep pace (real layers take microseconds) |
+| Layers, experts, active experts for known models (public model cards) | Everything mid-network for closed models |
+
+Hosted APIs don't expose a model's internals, so the inside of the network is a faithful-in-spirit
+animation driven by real timing. Every frame says so in its bottom border (`illustrative routing`), and
+closed or unrecognized models show `architecture unknown` rather than made-up numbers.
+
+**Known architectures:** DeepSeek V3/R1, Kimi K2, Qwen3 (235B, 30B-A3B, Coder 480B), gpt-oss (120B, 20B),
+Mixtral, Llama 4 Maverick/Scout, GLM-4.5, Llama 3.x, Qwen2.5-Coder. Add your own with the `arch` option.
+
+## Options
+
+Pass options as the second element of the plugin entry:
+
+```json
+{ "plugin": [["inlineviz@latest", { "surface": "sidebar", "fps": 20 }]] }
+```
 
 | option | default | |
 |---|---|---|
-| `surface` | `"sidebar"` | `"sidebar"`, `"strip"` (one line next to the prompt) or `"both"` |
+| `surface` | `"sidebar"` | `"sidebar"`, `"strip"` (a one-line meter beside the prompt) or `"both"` |
 | `sidebarHeight` | `14` | rows |
-| `fps` | `20` | render rate while the model works (the simulation always runs at 30 Hz) |
-| `idleFps` | `0` | idle animation rate; `0` = static idle frame |
-| `asciiSafe` | `false` | `⬢`→`◆`, `◉`→`@` for terminals that draw them double-width |
-| `labels` | `true` | |
-| `arch` | – | `{ "<modelID regex>": { "kind": "moe", "family": "x", "layers": 40, "experts": 128, "active": 8, "shared": 0 } }` |
+| `fps` | `20` | frame rate while the model is working |
+| `idleFps` | `0` | idle animation rate (`0` = still frame when idle) |
+| `asciiSafe` | `false` | use `◆`/`@` if your terminal draws `⬢`/`◉` too wide |
+| `arch` | – | teach it a model's shape: `{ "my-model-regex": { "kind": "moe", "family": "my-model", "layers": 48, "experts": 128, "active": 8, "shared": 0 } }` (or `{ "kind": "dense", "family": "x", "layers": 32 }`) |
 
-**CPU cost** (measured on this machine, OpenCode 1.18.32, 140×45, `ps` averages; see `devlog.md`):
-idle +0.7% over baseline (static idle frame); active ≈ 20% while animating at 20 fps. Our own drawing is
-~1 ms/frame for a full overlay, and most of the active cost is OpenCode re-rendering its whole screen
-for each frame we request. Lower `fps` if that matters.
+**Performance:** idle costs almost nothing (+~0.7% CPU in testing). While the model is working, animating
+costs roughly 15–25% of one core at 20 fps, mostly because OpenCode redraws its screen for each frame.
+Lower `fps` if that matters to you.
 
-**Your local model** (`llamacpp/qwen3.6-35b-a3b-uncensored`) isn't in the registry, so it shows
-`architecture unknown` rather than made-up numbers. If you know its shape (GGUF metadata
-`*.block_count`, `*.expert_count`, `*.expert_used_count`, or the HF `config.json`), add it:
+## Uninstall
 
-```json
-["file:///Users/vikrambhaduri/occ/opencodeviz", { "arch": { "qwen3\\.6-35b-a3b": { "kind": "moe", "family": "qwen3.6-35b-a3b", "layers": 0, "experts": 0, "active": 0, "shared": 0 } } }]
-```
-(fill in the real numbers)
+Remove the `inlineviz` entry from `~/.config/opencode/tui.json` and restart OpenCode.
 
-## Standalone CLI
+## Standalone CLI (optional)
+
+There's also a standalone version for any terminal pane. It needs [Bun](https://bun.sh).
 
 ```sh
-bun install
-bun src/hosts/cli.ts                    # demo loop (all scripts); keys: d next script, l labels, q quit
-bun src/hosts/cli.ts demo agentic       # moe-chat | agentic | closed | dense | error | all
+git clone https://github.com/basedvik/inlineviz && cd inlineviz && bun install
+bun src/hosts/cli.ts                      # demo loop: d = next demo, l = labels, q = quit
 bun src/hosts/cli.ts attach http://127.0.0.1:4096   # follow a running `opencode serve`
-bun src/hosts/cli.ts replay rec.ndjson -speed 2
-cat rec.ndjson | bun src/hosts/cli.ts stdin
-bun src/hosts/cli.ts capture -script agentic -size 100x30 -every 15 -text -out frames   # headless, byte-identical
-bun src/hosts/cli.ts screens -size 90x30 -visible 0.3   # every phase as text; -visible blanks dim cells
-bun src/hosts/cli.ts registry
+bun src/hosts/cli.ts help                 # replay, stdin, capture, screens, registry…
 ```
-Common flags: `-fps 30 -ascii-safe -no-labels -record out.ndjson -arch '<json>'`.
 
-## Porting to other harnesses
+Anything can drive it: pipe newline-delimited JSON events into `bun src/hosts/cli.ts stdin`
+(format in `src/core/protocol.ts`). `SPEC.md` §14 sketches adapters for Claude Code, API proxies and
+Ollama, and `WEB-SPEC.md` describes a web-canvas variant.
 
-The core takes **Signals** in (one JSON object per line: `turn.start`, `step.start`, `delta`,
-`tool.start/end`, `step.end{usage}`, `idle`, …; see `src/core/protocol.ts`) and produces **Frames** out.
-Anything that can print NDJSON Signals can drive `opencodeviz stdin`: a streaming API proxy, Claude Code
-hooks plus its transcript, Ollama. `SPEC.md` §14 covers the mappings, and `WEB-SPEC.md` covers a
-Go/Rust daemon + web canvas variant.
+## Troubleshooting
+
+- **Nothing shows up:** restart OpenCode after editing `tui.json`, and check the entry is in `tui.json`
+  (not `opencode.json`).
+- **Sidebar is hidden:** widen the terminal, or use `/viz`.
+- **Weird spacing around `⬢`/`◉`:** set `"asciiSafe": true`.
+- **Debugging:** `INLINEVIZ_DEBUG=/tmp/inlineviz.log opencode` logs the plugin's geometry and per-frame timing.
 
 ## Development
 
 ```sh
-bun test            # 104 tests: sim, layout (written first), render, goldens, adapter, live replay, hygiene
+bun install
+bun test              # 104 tests: simulation, layout, rendering, golden frames, OpenCode adapter, live replay
 bun run typecheck
-UPDATE_GOLDEN=1 bun test test/render.test.ts   # only after reading the new frames
-OPENCODEVIZ_DEBUG=/tmp/viz.log opencode         # plugin geometry + per-frame timing log
+bun run build         # → dist/tui.js (what OpenCode loads)
 ```
 
-Layout: `src/core` (pure, zero deps: protocol, sim, registry, render), `src/adapters` (OpenCode events,
-SSE attach, NDJSON), `src/backends` (ANSI blitter, OpenTUI copy), `src/hosts` (CLI, OpenCode TUI plugin).
-`SPEC.md` is the contract, and `devlog.md` records what was built, what was verified and what's still open.
+To develop against your own OpenCode, point `tui.json` at your checkout:
+`"file:///absolute/path/to/inlineviz"`. That uses `dist/tui.js`, so run `bun run build` after changes.
+
+`src/core` is pure and dependency-free (event protocol, deterministic simulation, model registry,
+renderer); `src/adapters` maps OpenCode events; `src/hosts` holds the OpenCode plugin and the CLI.
+`SPEC.md` is the original design contract (see `devlog.md` for what changed during the build).
+
+## License
+
+MIT

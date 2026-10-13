@@ -1,18 +1,52 @@
 {
-  "name": "opencodeviz",
+  "name": "inlineviz",
   "version": "0.1.0",
-  "description": "Live terminal visualization of what an LLM is doing: prefill, decode, reasoning, tools, context, MoE shape",
-  "type": "module",
+  "description": "Live terminal visualization of what your LLM is doing (prefill, decode, reasoning, tools, context, MoE shape) as an OpenCode plugin + standalone CLI",
   "license": "MIT",
-  "bin": { "opencodeviz": "./src/hosts/cli.ts" },
-  "exports": {
-    ".": { "import": "./src/hosts/opencode-tui.ts", "default": "./src/hosts/opencode-tui.ts" },
-    "./tui": { "import": "./src/hosts/opencode-tui.ts", "default": "./src/hosts/opencode-tui.ts" }
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/basedvik/inlineviz.git"
   },
+  "homepage": "https://github.com/basedvik/inlineviz#readme",
+  "bugs": "https://github.com/basedvik/inlineviz/issues",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "opentui",
+    "llm",
+    "visualization",
+    "terminal",
+    "moe"
+  ],
+  "bin": {
+    "inlineviz": "./src/hosts/cli.ts"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/tui.js",
+      "default": "./dist/tui.js"
+    },
+    "./tui": {
+      "import": "./dist/tui.js",
+      "default": "./dist/tui.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "bun build src/hosts/opencode-tui.ts --outfile dist/tui.js --target bun --format esm --external '@opentui/*' --external solid-js --external '@opencode-ai/*'",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "viz": "bun src/hosts/cli.ts"
+    "viz": "bun src/hosts/cli.ts",
+    "prepublishOnly": "bun run build && bun test && tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "1.18.16"
   },
   "peerDependencies": {
     "@opencode-ai/plugin": ">=1.18.0",
@@ -20,13 +54,18 @@
     "@opentui/solid": "*"
   },
   "peerDependenciesMeta": {
-    "@opencode-ai/plugin": { "optional": true },
-    "@opentui/core": { "optional": true },
-    "@opentui/solid": { "optional": true }
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "@opentui/core": {
+      "optional": true
+    },
+    "@opentui/solid": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@opencode-ai/plugin": "1.18.16",
-    "@opencode-ai/sdk": "1.18.16",
     "@opentui/core": "^0.5.10",
     "@opentui/keymap": "^0.5.10",
     "@opentui/solid": "^0.5.10",

@@ -75,7 +75,7 @@ export function runInteractive(o: InteractiveOpts): void {
   const out = process.stdout;
   const inp = process.stdin;
   if (!out.isTTY) {
-    process.stderr.write("opencodeviz: interactive mode needs a TTY (try `capture` or `screens` for headless output)\n");
+    process.stderr.write("inlineviz: interactive mode needs a TTY (try `capture` or `screens` for headless output)\n");
     process.exit(2);
   }
   const blitter = new Blitter(detectTruecolor());
@@ -102,7 +102,7 @@ export function runInteractive(o: InteractiveOpts): void {
   process.on("SIGTERM", () => quit(143));
   process.on("uncaughtException", (e) => {
     restore();
-    process.stderr.write(`opencodeviz: ${e?.stack ?? e}\n`);
+    process.stderr.write(`inlineviz: ${e?.stack ?? e}\n`);
     process.exit(1);
   });
   // Resize is a pure notifier (tdef's SIGWINCH race fix): the loop reads the size.

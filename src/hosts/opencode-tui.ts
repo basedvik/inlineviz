@@ -4,7 +4,7 @@
 //   • /viz → full-size overlay dialog; /viz-demo plays the built-in demo
 //
 // Register in ~/.config/opencode/tui.json:
-//   { "plugin": ["file:///abs/path/to/opencodeviz", { "surface": "sidebar" }] }
+//   { "plugin": ["inlineviz@latest"] }   (or "github:basedvik/inlineviz", or a file:// path)
 //
 // No JSX / Solid compiler: we call @opentui/solid's runtime (createElement,
 // setProp, createComponent) directly, exactly like compiled Solid output.
@@ -25,8 +25,8 @@ import { Driver } from "../core/sim/driver.ts";
 import { createSim } from "../core/sim/sim.ts";
 import { appendFileSync } from "node:fs";
 
-/** Opt-in geometry/debug log: OPENCODEVIZ_DEBUG=/path/to/file (SPEC §18: slot sizes). */
-const DEBUG_FILE = process.env.OPENCODEVIZ_DEBUG;
+/** Opt-in geometry/timing log: INLINEVIZ_DEBUG=/path/to/file (OPENCODEVIZ_DEBUG also accepted). */
+const DEBUG_FILE = process.env.INLINEVIZ_DEBUG ?? process.env.OPENCODEVIZ_DEBUG;
 const debug = (msg: Record<string, unknown>) => {
   if (!DEBUG_FILE) return;
   try { appendFileSync(DEBUG_FILE, JSON.stringify({ t: Date.now(), ...msg }) + "\n"); } catch { /* ignore */ }
@@ -266,8 +266,8 @@ const tui: TuiPlugin = async (api: TuiPluginApi, options) => {
   disposers.push(() => demoTimers.forEach(clearTimeout));
 
   const commands = [
-    { name: "opencodeviz.toggle", title: "Toggle model visualizer", slashName: "viz", category: "View", run: toggleOverlay },
-    { name: "opencodeviz.demo", title: "Model visualizer: play demo", slashName: "viz-demo", category: "View", run: playDemo },
+    { name: "inlineviz.toggle", title: "Toggle model visualizer", slashName: "viz", category: "View", run: toggleOverlay },
+    { name: "inlineviz.demo", title: "Model visualizer: play demo", slashName: "viz-demo", category: "View", run: playDemo },
   ];
   let registered = false;
   try {
@@ -295,5 +295,5 @@ const tui: TuiPlugin = async (api: TuiPluginApi, options) => {
   });
 };
 
-const plugin: TuiPluginModule = { id: "opencodeviz", tui };
+const plugin: TuiPluginModule = { id: "inlineviz", tui };
 export default plugin;

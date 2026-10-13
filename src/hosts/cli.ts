@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// opencodeviz standalone CLI (SPEC §13), tdef main.go style: subcommands with
+// inlineviz standalone CLI (SPEC §13), tdef main.go style: subcommands with
 // their own flags. Interactive commands render with the ANSI backend; capture
 // and screens are headless and byte-identical everywhere.
 
@@ -17,20 +17,20 @@ import { createSim } from "../core/sim/sim.ts";
 import { runInteractive } from "../backends/ansi.ts";
 import { parseNdjsonLine } from "../adapters/ndjson.ts";
 
-const HELP = `opencodeviz — live visualization of what an LLM is doing
+const HELP = `inlineviz — live visualization of what an LLM is doing
 
 usage:
-  opencodeviz                          demo loop (all scripts)
-  opencodeviz demo [script]            ${DEMO_NAMES.join(" | ")} | all
-  opencodeviz replay <file.ndjson> [-speed 2]
-  opencodeviz stdin                    read NDJSON Signals from stdin
-  opencodeviz attach <url> [-session id]   follow a running OpenCode server (opencode serve)
-  opencodeviz capture -script agentic -size 100x30 [-every 15] [-limit N] [-text|-ansi] [-out frames]
-  opencodeviz screens [-size 100x30] [-script agentic] [-tick N] [-visible 0.3]
+  inlineviz                          demo loop (all scripts)
+  inlineviz demo [script]            ${DEMO_NAMES.join(" | ")} | all
+  inlineviz replay <file.ndjson> [-speed 2]
+  inlineviz stdin                    read NDJSON Signals from stdin
+  inlineviz attach <url> [-session id]   follow a running OpenCode server (opencode serve)
+  inlineviz capture -script agentic -size 100x30 [-every 15] [-limit N] [-text|-ansi] [-out frames]
+  inlineviz screens [-size 100x30] [-script agentic] [-tick N] [-visible 0.3]
                                        every phase at a size (all sizes if omitted);
                                        -visible blanks cells dimmer than a luminance threshold
-  opencodeviz registry                 print the architecture table
-  opencodeviz help
+  inlineviz registry                 print the architecture table
+  inlineviz help
 
 common flags: -fps 30  -ascii-safe  -no-labels  -record out.ndjson  -arch '<json {regex: Arch}>'
 `;
@@ -55,7 +55,7 @@ function parseFlags(args: string[]): { pos: string[]; flags: Flags } {
 }
 
 function die(msg: string): never {
-  process.stderr.write(`opencodeviz: ${msg}\n`);
+  process.stderr.write(`inlineviz: ${msg}\n`);
   process.exit(2);
 }
 
@@ -156,7 +156,7 @@ function makeLive(flags: Flags) {
   const sim = createSim("live", archOverrides(flags));
   const driver = new Driver(sim);
   const record = typeof flags.record === "string" ? flags.record : undefined;
-  if (record) writeFileSync(record, `# opencodeviz recording ${new Date().toISOString()}\n`);
+  if (record) writeFileSync(record, `# inlineviz recording ${new Date().toISOString()}\n`);
   const push = (s: Signal) => {
     driver.push(s);
     if (record) writeFileSync(record, JSON.stringify(s) + "\n", { flag: "a" });
@@ -237,7 +237,7 @@ function replay(pos: string[], flags: Flags): void {
 }
 
 function stdin(flags: Flags): void {
-  if (process.stdin.isTTY) die("stdin: pipe NDJSON Signals in, e.g. `cat rec.ndjson | opencodeviz stdin`");
+  if (process.stdin.isTTY) die("stdin: pipe NDJSON Signals in, e.g. `cat rec.ndjson | inlineviz stdin`");
   startInteractive(flags, (push) => {
     let buf = "";
     process.stdin.setEncoding("utf8");

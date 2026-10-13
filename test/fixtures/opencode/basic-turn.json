@@ -1,0 +1,20 @@
+[
+  { "type": "session.status", "properties": { "sessionID": "ses_1", "status": { "type": "busy" } } },
+  { "type": "message.updated", "properties": { "sessionID": "ses_1", "info": { "id": "msg_u1", "sessionID": "ses_1", "role": "user", "time": { "created": 1 } } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 1, "part": { "id": "prt_u1", "sessionID": "ses_1", "messageID": "msg_u1", "type": "text", "text": "please run the tests" } } },
+  { "type": "message.updated", "properties": { "sessionID": "ses_1", "info": { "id": "msg_a1", "sessionID": "ses_1", "role": "assistant", "providerID": "anthropic", "modelID": "claude-sonnet-4-5", "time": { "created": 2 }, "tokens": { "input": 0, "output": 0, "reasoning": 0, "cache": { "read": 0, "write": 0 } } } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 2, "part": { "id": "prt_s1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "step-start" } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 2, "part": { "id": "prt_r1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "reasoning", "text": "", "time": { "start": 2 } } } },
+  { "type": "message.part.delta", "properties": { "sessionID": "ses_1", "messageID": "msg_a1", "partID": "prt_r1", "field": "text", "delta": "Let me think" } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 3, "part": { "id": "prt_t1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "text", "text": "" } } },
+  { "type": "message.part.delta", "properties": { "sessionID": "ses_1", "messageID": "msg_a1", "partID": "prt_t1", "field": "text", "delta": "Hello there" } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 3, "part": { "id": "prt_t1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "text", "text": "Hello there!" } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 4, "part": { "id": "prt_k1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "tool", "callID": "call_1", "tool": "bash", "state": { "status": "pending" } } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 4, "part": { "id": "prt_k1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "tool", "callID": "call_1", "tool": "bash", "state": { "status": "running" } } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 5, "part": { "id": "prt_k1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "tool", "callID": "call_1", "tool": "bash", "state": { "status": "completed" } } } },
+  { "type": "message.part.updated", "properties": { "sessionID": "ses_1", "time": 5, "part": { "id": "prt_f1", "sessionID": "ses_1", "messageID": "msg_a1", "type": "step-finish", "reason": "tool-calls", "cost": 0, "tokens": { "input": 100, "output": 50, "reasoning": 10, "cache": { "read": 1000, "write": 0 } } } } },
+  { "type": "message.part.delta", "properties": { "sessionID": "ses_1", "messageID": "msg_u1", "partID": "prt_u1", "field": "text", "delta": "user text must be ignored" } },
+  { "type": "message.updated", "properties": { "sessionID": "ses_1", "info": { "id": "msg_a1", "sessionID": "ses_1", "role": "assistant", "providerID": "anthropic", "modelID": "claude-sonnet-4-5", "time": { "created": 2, "completed": 6 } } } },
+  { "type": "session.status", "properties": { "sessionID": "ses_1", "status": { "type": "idle" } } },
+  { "type": "session.idle", "properties": { "sessionID": "ses_1" } }
+]

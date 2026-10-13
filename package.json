@@ -1,0 +1,37 @@
+{
+  "name": "opencodeviz",
+  "version": "0.1.0",
+  "description": "Live terminal visualization of what an LLM is doing: prefill, decode, reasoning, tools, context, MoE shape",
+  "type": "module",
+  "license": "MIT",
+  "bin": { "opencodeviz": "./src/hosts/cli.ts" },
+  "exports": {
+    ".": { "import": "./src/hosts/opencode-tui.ts", "default": "./src/hosts/opencode-tui.ts" },
+    "./tui": { "import": "./src/hosts/opencode-tui.ts", "default": "./src/hosts/opencode-tui.ts" }
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "viz": "bun src/hosts/cli.ts"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.0",
+    "@opentui/core": "*",
+    "@opentui/solid": "*"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": { "optional": true },
+    "@opentui/core": { "optional": true },
+    "@opentui/solid": { "optional": true }
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "1.18.16",
+    "@opencode-ai/sdk": "1.18.16",
+    "@opentui/core": "^0.5.10",
+    "@opentui/keymap": "^0.5.10",
+    "@opentui/solid": "^0.5.10",
+    "@types/bun": "latest",
+    "solid-js": "^1.9.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "inlineviz",
+  "displayName": "inlineviz",
+  "version": "0.1.0",
+  "description": "Live terminal visualization of what Claude is doing: prompt reading, working, tools, subagents and context, beside your session",
+  "author": { "name": "basedvik", "url": "https://github.com/basedvik" },
+  "homepage": "https://github.com/basedvik/inlineviz",
+  "repository": "https://github.com/basedvik/inlineviz",
+  "license": "MIT",
+  "keywords": ["visualization", "terminal", "subagents", "tokens", "observability"]
+}

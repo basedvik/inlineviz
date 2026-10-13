@@ -1,0 +1,12 @@
+{
+  "name": "inlineviz",
+  "description": "inlineviz: a live terminal visualization of what your AI coding agent is doing",
+  "owner": { "name": "basedvik", "url": "https://github.com/basedvik" },
+  "plugins": [
+    {
+      "name": "inlineviz",
+      "source": "./",
+      "description": "Live terminal visualization of Claude Code sessions: phases, tools, subagents, context"
+    }
+  ]
+}

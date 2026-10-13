@@ -25,6 +25,8 @@ usage:
   inlineviz replay <file.ndjson> [-speed 2]
   inlineviz stdin                    read NDJSON Signals from stdin
   inlineviz attach <url> [-session id]   follow a running OpenCode server (opencode serve)
+  inlineviz claude [-session id] [-events file]   follow Claude Code (needs the inlineviz Claude Code plugin)
+  inlineviz open [claude|demo]         open the viewer in a tmux split or a new terminal window
   inlineviz capture -script agentic -size 100x30 [-every 15] [-limit N] [-text|-ansi] [-out frames]
   inlineviz screens [-size 100x30] [-script agentic] [-tick N] [-visible 0.3]
                                        every phase at a size (all sizes if omitted);
@@ -253,6 +255,47 @@ function stdin(flags: Flags): void {
   });
 }
 
+function claude(flags: Flags): void {
+  startInteractive(flags, (push, now) => {
+    void (async () => {
+      const { followClaude } = await import("../adapters/claude-tail.ts");
+      const f = followClaude({
+        push,
+        now,
+        sessionID: typeof flags.session === "string" ? flags.session : undefined,
+        events: typeof flags.events === "string" ? flags.events : undefined,
+      });
+      stopClaude = f.stop;
+    })();
+    return () => stopClaude?.();
+  });
+}
+let stopClaude: (() => void) | undefined;
+
+/** Shell-quote one argument. */
+const shq = (a: string) => `'${a.replace(/'/g, `'\\''`)}'`;
+
+/** Open the viewer beside the user's agent: tmux split, else a new Terminal / iTerm window, else print. */
+async function open(pos: string[]): Promise<void> {
+  const what = pos[0] === "demo" ? "demo" : "claude";
+  const cmd = [process.execPath, process.argv[1], what].map(shq).join(" ");
+  const { spawnSync } = await import("node:child_process");
+  if (process.env.TMUX) {
+    const r = spawnSync("tmux", ["split-window", "-h", "-l", "42%", cmd], { stdio: "ignore" });
+    if (r.status === 0) return void process.stdout.write("inlineviz: opened in a tmux split\n");
+  }
+  if (process.platform === "darwin") {
+    const esc = cmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const iterm = process.env.TERM_PROGRAM === "iTerm.app";
+    const script = iterm
+      ? `tell application "iTerm" to create window with default profile command "${esc}"`
+      : `tell application "Terminal"\n  activate\n  do script "${esc}"\nend tell`;
+    const r = spawnSync("osascript", ["-e", script], { stdio: "ignore" });
+    if (r.status === 0) return void process.stdout.write(`inlineviz: opened in a new ${iterm ? "iTerm" : "Terminal"} window\n`);
+  }
+  process.stdout.write(`inlineviz: run this in another terminal pane:\n  ${cmd}\n`);
+}
+
 async function attach(pos: string[], flags: Flags): Promise<void> {
   const url = pos[0] ?? "http://127.0.0.1:4096";
   const { attachOpenCode } = await import("../adapters/opencode-sse.ts");
@@ -278,6 +321,10 @@ export async function main(argv: string[]): Promise<void> {
       return stdin(flags);
     case "attach":
       return attach(pos, flags);
+    case "claude":
+      return claude(flags);
+    case "open":
+      return open(pos);
     case "capture":
       return capture(flags);
     case "screens":

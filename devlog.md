@@ -325,3 +325,58 @@ fit beside `▸ DECODE 11t/s`, which looked like a glitch.
 - Any truncated HUD segment now ends in `…`.
 - Tests: 8 real-ID cases + `SidebarShowsShortModelNameUncut` (the screenshot case at 100+ tok/s) +
   `TruncatedLabelsEndWithEllipsis`. 137 pass; goldens unchanged.
+
+## 2026-10-13: Claude Code plugin (no npm needed)
+
+The user is locked out of npm, so this is the next host. Claude Code plugins install from a GitHub repo
+that's its own marketplace.
+
+**Verified first** (docs + a probe plugin that recorded payload *shapes* only, Claude Code 2.1.283, Haiku):
+- Hooks give phases, tools (`tool_use_id`), `PostToolBatch` (model resumes), `SubagentStart/Stop`
+  (`agent_id`, `agent_type`; subagent tool calls carry `agent_id`; `agent_type: ""` = internal helpers that
+  never fire SubagentStart), `SessionStart.model`, `Stop`/`StopFailure`. `async: true` hooks never block.
+- **No live token stream:** `MessageDisplay` has `delta`/`index`/`final` but fired once per message with the
+  whole text (1,342 chars), so decode can't be measured live.
+- The transcript writes each content block as its own line; lines share `message.id` and repeat the final
+  usage incl. `output_tokens_details.thinking_tokens`. Exact per message, but only after the message ends.
+- Plugins can't draw in Claude Code's UI, so the viewer runs beside it.
+
+**Built**
+- `src/adapters/claude.ts` (pure): hook record + transcript → Signals; usage dedup by message.id;
+  `seedFromTranscript` folds history into context; no assumed context window (`[1m]` → 1M).
+- `claude/hook.mjs` + `hook.sh`: async recorder; writes ONLY event, ids, tool name, model, error type to
+  `${CLAUDE_PLUGIN_DATA}/events.ndjson` (5 MB rotation). Tested: a payload with a secret command and prompt
+  writes neither; garbage input exits 0.
+- `src/adapters/claude-tail.ts`: byte-offset polling of the events file + the followed transcript; follows the
+  newest active session; bootstraps the unfinished turn; **rediscovers the events file** if the plugin's data
+  folder appears after the viewer started.
+- Sim **estimate mode** (new `mode {streaming:false}` signal): PREFILL for 0.6 s, then `▸ WORKING ≈N tok/s`
+  pulses at the pace learned per model from real messages (default 40). Estimated pulses never count into
+  the context grid; real usage lands exactly. Late usage is paired with the oldest pending step start (queue),
+  and usage never ends WORKING; only tool.start / Stop / error do.
+- CLI `claude` + `open` (tmux split → Terminal/iTerm via osascript → print the command); `cli-entry.ts`
+  + `bun run build:cli` → `dist/inlineviz.mjs` (151 KB, runs on Node 20).
+- Plugin: `.claude-plugin/{plugin,marketplace}.json` (repo root = marketplace + plugin), `hooks/hooks.json`,
+  `commands/viz.md`, `commands/viz-demo.md`, `bin/inlineviz` (on Claude's Bash PATH). `claude plugin validate`
+  passes for both manifests.
+
+**Live verification** (real Claude Code sessions with `--plugin-dir`, viewer in a second PTY)
+- Final run: idle → PREFILL → `WORKING ≈40` → `⚙ Agent` → `+1 agents` → `⚙ Bash` → PREFILL → real usage
+  `ctx 38k 79% cached · think ~123 · out ~154` → `WORKING ≈69` (learned) → idle → Claude's self-started follow-up
+  turn `WORKING ≈72` → idle.
+- `inlineviz open demo` inside a detached tmux session opened a second pane running the viewer.
+
+**Bugs found live and fixed:** a pinned `-session` never focused (unit test); a viewer started before the
+plugin's first run never found the events file; late usage stalled the next step in PREFILL (twice: after a
+tool batch, and across Claude's self-started follow-up turn).
+
+**Process gotchas**
+- Claude Code launched from *inside* Claude Code inherits `CLAUDE_CODE_CHILD_SESSION=1` and doesn't write
+  its transcript. Test with `env -u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID …`.
+  It also skipped transcripts for sessions in temp folders.
+- In zsh, `$VAR` holding `env -u …` isn't word-split (exit 127): write it inline.
+- The folder-trust prompt defaults to "No, exit": send arrow-down before Enter.
+
+**Open:** subagent lanes (data is there: per-agent tool events); the Claude Code context window size is
+unknown (shows ~200k); `MessageDisplay` might stream in a future Claude Code version, in which case decode
+would become real.

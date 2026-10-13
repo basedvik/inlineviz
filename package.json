@@ -39,11 +39,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "bun build src/hosts/opencode-tui.ts --outfile dist/tui.js --target bun --format esm --external '@opentui/*' --external solid-js --external '@opencode-ai/*'",
+    "build": "bun run build:tui && bun run build:cli",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "viz": "bun src/hosts/cli.ts",
-    "prepublishOnly": "bun run build && bun test && tsc --noEmit"
+    "prepublishOnly": "bun run build && bun test && tsc --noEmit",
+    "build:tui": "bun build src/hosts/opencode-tui.ts --outfile dist/tui.js --target bun --format esm --external '@opentui/*' --external solid-js --external '@opencode-ai/*'",
+    "build:cli": "bun build src/hosts/cli-entry.ts --outfile dist/inlineviz.mjs --target node --format esm"
   },
   "dependencies": {
     "@opencode-ai/sdk": "1.18.16"

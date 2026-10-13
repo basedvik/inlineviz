@@ -1,8 +1,13 @@
 # inlineviz
 
-A live terminal animation of what your LLM is doing **right now**, inside [OpenCode](https://opencode.ai):
-prefill, decode, reasoning vs. answer, tool calls, context fill and cache, and (for known open-weight
-models) the model's real architecture: layers, experts, active experts.
+A live terminal animation of what your LLM is doing **right now**: prefill, decode, reasoning vs. answer,
+tool calls, subagents, context fill and cache, and (for known open-weight models) the model's real
+architecture: layers, experts, active experts.
+
+Works with:
+- **[OpenCode](https://opencode.ai)**: draws *inside* OpenCode (sidebar + `/viz` full view). [Install ↓](#install-for-opencode)
+- **[Claude Code](https://claude.com/claude-code)**: a plugin that drives a viewer *beside* your session
+  (tmux split or a new terminal window). [Install ↓](#install-for-claude-code)
 
 ```
 ╭─┤qwen3-235b-a22b · MoE 128e/8a · 94L├─────────────┤▸ REASONING  L 1/94  71 tok/s  ttft 1.4s├─╮
@@ -22,7 +27,7 @@ this turn) → **router** → **experts** (`⬢`, exactly *k* light per token on
 → **output** (`◉` = the token being sampled). Each sampled token flies back into the context grid,
 because that loop *is* how an LLM writes.
 
-## Install
+## Install for OpenCode
 
 **You need:** OpenCode **1.18 or 1.19** (check with `opencode --version`). OpenCode 2 isn't supported yet
 (it uses a new plugin system, and support is planned). Nothing else is needed: no Bun, no build step.
@@ -135,7 +140,39 @@ To update later: `cd ~/inlineviz && git pull`, then restart OpenCode.
 > It must go in **`tui.json`**, not `opencode.json`/`opencode.jsonc`. Those are for a different kind of plugin, and
 > putting it there won't work.
 
-## Use it
+
+## Install for Claude Code
+
+**You need:** Claude Code 2.1 or newer, and Node.js 18+ (or Bun) on your PATH. No npm install, no build.
+
+In Claude Code, run:
+
+```text
+/plugin marketplace add basedvik/inlineviz
+/plugin install inlineviz@inlineviz
+```
+
+Then start a new Claude Code session, and type **`/inlineviz:viz`**. The viewer opens beside your session: in a
+tmux split if you're in tmux, otherwise in a new Terminal or iTerm window. (The first time, macOS may ask to
+let your terminal control Terminal; allow it.) `/inlineviz:viz-demo` plays the built-in demo.
+
+You can also open the viewer yourself in any terminal pane, from a clone of this repo:
+`node dist/inlineviz.mjs claude`.
+
+**What's real in Claude Code:** the phases (reading your prompt, working, running tools), every tool call,
+subagents starting and finishing, the model, and exact token counts per message (thinking vs. answer, cache
+hits, context size), taken from Claude Code's hooks and its own session log. One thing Claude Code doesn't
+expose is the live token stream, so **while Claude is working the pace is an estimate** (`▸ WORKING ≈69 tok/s`),
+learned from how fast Claude actually was on your previous messages. The real counts land when each message
+finishes. Claude's context window size isn't reported, so it shows `~200k` (or 1M for `[1m]` models).
+
+**Privacy:** the plugin's hooks run in the background and record only event names, IDs, tool names, the model
+and error types, in `~/.claude/plugins/data/inlineviz…/events.ndjson` (rotated at 5 MB). Never your prompts,
+code, commands or tool output. Nothing leaves your machine.
+
+**Uninstall:** `/plugin uninstall inlineviz@inlineviz`.
+
+## Using it in OpenCode
 
 - **Sidebar:** open any session and a compact visualizer sits in the right sidebar, above *Context*.
   If you don't see the sidebar, widen the terminal (or toggle the sidebar from `ctrl+p`).
@@ -240,6 +277,9 @@ Ollama, and `WEB-SPEC.md` describes a web-canvas variant.
   session on a wide enough terminal. Widen the window, or type `/viz` for the full-size view.
 - **Weird spacing around `⬢`/`◉`:** set `"asciiSafe": true`.
 - **Debugging:** `INLINEVIZ_DEBUG=/tmp/inlineviz.log opencode` logs the plugin's geometry and per-frame timing.
+- **Claude Code viewer shows nothing:** it follows the most recent session that has used the plugin, so send a
+  prompt after installing. Check that `node --version` works in your terminal (the hooks need Node or Bun).
+- **`/inlineviz:viz` didn't open a window:** it prints the command to run instead; paste that into any terminal pane.
 
 ## Development
 

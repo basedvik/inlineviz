@@ -1,0 +1,8 @@
+#!/bin/sh
+# inlineviz CLI launcher. As a Claude Code plugin, bin/ is on Claude's Bash PATH.
+# Runs the bundled CLI (dist/inlineviz.mjs) with Node 18+ or Bun.
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if command -v node >/dev/null 2>&1; then exec node "$ROOT/dist/inlineviz.mjs" "$@"; fi
+if command -v bun >/dev/null 2>&1; then exec bun "$ROOT/dist/inlineviz.mjs" "$@"; fi
+echo "inlineviz needs Node.js 18+ or Bun (https://nodejs.org)" >&2
+exit 1

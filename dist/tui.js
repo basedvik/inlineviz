@@ -811,6 +811,8 @@ var ERROR_TICKS = 36;
 var PULSE_MIN_GAP = 3;
 var MAX_PULSES = 6;
 var FLASH_TTL = 45;
+var EST_PREFILL_TICKS = 18;
+var DEFAULT_EST_TPS = 40;
 var CALIB_MIN_EST = 20;
 function createSim(sessionKey = "default", archOverrides) {
   return {
@@ -838,6 +840,10 @@ function createSim(sessionKey = "default", archOverrides) {
     turnText: 0,
     bank: 0,
     draining: false,
+    streaming: true,
+    estimating: false,
+    estTps: new Map,
+    stepStarts: [],
     tps: 0,
     tpsApprox: false,
     lastDeltaTick: -1e6,
@@ -877,14 +883,21 @@ function addGenerated(s, stream, tokens) {
   else
     s.turnText += tokens;
 }
-function spawnPulse(s, tokens) {
+function spawnPulse(s, tokens, est = false) {
   const sweep = Math.max(9, Math.min(20, Math.round(270 / Math.max(s.tps, 1))));
-  s.pulses.push({ index: s.nextPulseIndex++, bornTick: s.tick, tokens, stream: s.stream, sweepTicks: sweep });
+  s.pulses.push({ index: s.nextPulseIndex++, bornTick: s.tick, tokens, stream: s.stream, sweepTicks: sweep, ...est ? { est: true } : {} });
   s.bank -= tokens;
   if (s.bank < 0.000000001)
     s.bank = 0;
   s.lastEmitTick = s.tick;
-  addGenerated(s, s.stream, tokens);
+  if (!est)
+    addGenerated(s, s.stream, tokens);
+}
+function stopEstimating(s) {
+  if (!s.estimating)
+    return;
+  s.estimating = false;
+  s.bank = 0;
 }
 function flushBank(s) {
   if (s.bank >= 0.5)
@@ -932,12 +945,32 @@ function applySignal(s, sig) {
         s.arch = archFor(s.model, s.archOverrides, s.discovered);
       return;
     }
+    case "mode": {
+      s.streaming = sig.streaming;
+      if (s.streaming)
+        stopEstimating(s);
+      return;
+    }
     case "turn.start": {
+      stopEstimating(s);
       startTurn(s);
       beginPrefill(s);
       return;
     }
     case "step.start": {
+      if (!s.streaming) {
+        if (s.phase === "idle" || s.phase === "error")
+          startTurn(s);
+        while (s.stepStarts.length && (s.tick - s.stepStarts[0] > 10 * 60 * TICK_HZ || s.stepStarts.length >= 16))
+          s.stepStarts.shift();
+        s.stepStarts.push(s.tick);
+        s.stepOpen = true;
+        s.stepStartTick = s.tick;
+        if (s.phase !== "prefill")
+          beginPrefill(s);
+        s.retryAttempt = undefined;
+        return;
+      }
       if (s.stepOpen)
         return;
       if (s.phase === "idle" || s.phase === "error")
@@ -981,6 +1014,7 @@ function applySignal(s, sig) {
     case "tool.start": {
       if (s.tools.has(sig.callID))
         return;
+      stopEstimating(s);
       s.tools.set(sig.callID, { tool: sig.tool, startTick: s.tick });
       s.toolsCalled++;
       if (s.phase === "decode")
@@ -998,6 +1032,29 @@ function applySignal(s, sig) {
       return;
     }
     case "step.end": {
+      if (sig.usage && !s.streaming) {
+        const u = sig.usage;
+        const started = s.stepStarts.shift();
+        s.usage = u;
+        s.promptTokens = promptTokens(u);
+        s.promptGenBase = s.genTotal;
+        addGenerated(s, "reasoning", u.reasoning);
+        addGenerated(s, "text", u.output);
+        const observed = u.output + u.reasoning;
+        const secs = started === undefined ? 0 : (s.tick - started) / TICK_HZ;
+        if (observed > 0 && secs > 0.3) {
+          const rate = observed / secs;
+          const key = calibKey(s);
+          const prev = s.estTps.get(key);
+          s.estTps.set(key, prev === undefined ? rate : prev + (rate - prev) * 0.5);
+          s.tps = rate;
+          s.tpsApprox = true;
+        }
+        if (u.reasoning > u.output)
+          s.stream = "reasoning";
+        s.lastFinish = sig.finish;
+        return;
+      }
       if (sig.usage) {
         const u = sig.usage;
         s.usage = u;
@@ -1034,6 +1091,8 @@ function applySignal(s, sig) {
       return;
     }
     case "error": {
+      stopEstimating(s);
+      s.stepStarts = [];
       s.flashes.push({ kind: "error", bornTick: s.tick });
       s.tools.clear();
       s.stepOpen = false;
@@ -1043,6 +1102,7 @@ function applySignal(s, sig) {
       return;
     }
     case "idle": {
+      stopEstimating(s);
       if (!s.draining)
         flushBank(s);
       s.tools.clear();
@@ -1056,10 +1116,12 @@ function applySignal(s, sig) {
       return;
     }
     case "reset": {
-      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick };
+      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick, streaming: s.streaming, estTps: s.estTps };
       Object.assign(s, createSim(sig.sessionKey, keep.overrides));
       s.calib = keep.calib;
       s.discovered = keep.discovered;
+      s.streaming = keep.streaming;
+      s.estTps = keep.estTps;
       s.tick = keep.tick;
       s.phaseTick = keep.tick;
       s.lastSignalTick = keep.tick;
@@ -1070,11 +1132,19 @@ function applySignal(s, sig) {
 function step(s) {
   s.tick++;
   const t = s.tick;
+  if (!s.streaming && !s.estimating && s.stepOpen && s.phase === "prefill" && s.tools.size === 0 && t - (s.prefillTick ?? t) >= EST_PREFILL_TICKS) {
+    s.estimating = true;
+    s.tps = s.estTps.get(calibKey(s)) ?? DEFAULT_EST_TPS;
+    s.tpsApprox = true;
+    setPhase(s, "decode");
+  }
+  if (s.estimating)
+    s.bank += s.tps / TICK_HZ;
   const emitting = s.phase === "decode" || s.draining;
   if (emitting && s.bank >= 1 && t - s.lastEmitTick >= PULSE_MIN_GAP && s.pulses.length < MAX_PULSES) {
     const per = Math.max(1, Math.ceil(s.tps / 10));
     const take = Math.min(s.bank, s.bank > per * 4 ? Math.ceil(s.bank / 4) : per);
-    spawnPulse(s, take);
+    spawnPulse(s, take, s.estimating);
   }
   if (s.draining && s.bank < 1) {
     if (s.bank > 0)
@@ -1099,7 +1169,7 @@ function step(s) {
 function inflightTokens(s) {
   let n = 0;
   for (const p of s.pulses)
-    if (s.tick - p.bornTick < p.sweepTicks)
+    if (!p.est && s.tick - p.bornTick < p.sweepTicks)
       n += p.tokens;
   return n;
 }
@@ -1816,7 +1886,7 @@ function drawHud(f, L, s, pal, opts, newest, cv, border, failI) {
       break;
     }
     case "decode": {
-      const label = s.stream === "reasoning" ? full ? "REASONING" : "THINK" : "DECODE";
+      const label = s.estimating ? "WORKING" : s.stream === "reasoning" ? full ? "REASONING" : "THINK" : "DECODE";
       phaseColor = s.stream === "reasoning" ? pal.reasoning : pal.textOut;
       if (full) {
         let lay = "";

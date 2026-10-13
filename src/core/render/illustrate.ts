@@ -56,14 +56,14 @@ export function pickK(n: number, k: number, rng: () => number): number[] {
   return out;
 }
 
-/** m distinct indices from [0, nFilled), biased toward the most recent (highest) ones. */
+/** m distinct indices from [0, nFilled), mildly biased toward the most recent (highest) ones. */
 export function pickRecent(nFilled: number, m: number, rng: () => number): number[] {
   m = Math.max(0, Math.min(m, nFilled));
   const out: number[] = [];
   const seen = new Set<number>();
   let guard = 0;
   while (out.length < m && guard++ < m * 20) {
-    const idx = nFilled - 1 - Math.floor(nFilled * Math.pow(rng(), 2.2));
+    const idx = nFilled - 1 - Math.floor(nFilled * Math.pow(rng(), 1.4));
     if (idx >= 0 && !seen.has(idx)) {
       seen.add(idx);
       out.push(idx);

@@ -83,3 +83,14 @@ function compact(w: number, h: number): CompactLayout {
 export function outY(L: { out: Rect }, i: number): number {
   return L.out.y + 2 * i;
 }
+
+/**
+ * Position of context-grid cell i. The grid fills COLUMN-major (time flows left → right, each
+ * column top → bottom), so even a small context spans several rows and the router fan leaves
+ * from many rows. The single source of truth for cell geometry.
+ */
+export function gridCell(grid: Rect, i: number): { col: number; row: number; x: number; y: number } {
+  const h = Math.max(1, grid.h);
+  const col = Math.floor(i / h), row = i % h;
+  return { col, row, x: grid.x + col, y: grid.y + row };
+}

@@ -437,7 +437,7 @@ function pickRecent(nFilled, m, rng) {
   const seen = new Set;
   let guard = 0;
   while (out.length < m && guard++ < m * 20) {
-    const idx = nFilled - 1 - Math.floor(nFilled * Math.pow(rng(), 2.2));
+    const idx = nFilled - 1 - Math.floor(nFilled * Math.pow(rng(), 1.4));
     if (idx >= 0 && !seen.has(idx)) {
       seen.add(idx);
       out.push(idx);
@@ -1088,6 +1088,11 @@ function compact(w, h) {
 function outY(L, i) {
   return L.out.y + 2 * i;
 }
+function gridCell(grid, i) {
+  const h = Math.max(1, grid.h);
+  const col = Math.floor(i / h), row = i % h;
+  return { col, row, x: grid.x + col, y: grid.y + row };
+}
 
 // src/core/render/strip.ts
 function renderStrip(f, s, pal, opts) {
@@ -1337,13 +1342,13 @@ function drawScene(f, L, s, pal, opts) {
     const bx = since % 27 / 27 * (g.w + 6) - 3;
     const anyFresh = gm.kind.some((k) => k === CELL_FRESH);
     for (let i = 0;i < cells; i++) {
-      const d = Math.abs(i % g.w - bx);
+      const d = Math.abs(gridCell(g, i).col - bx);
       if (d >= 2.5)
         continue;
       const boost = 1 - d / 2.5 * 0.5;
       if (gm.kind[i] === CELL_FRESH)
         gridI[i] = Math.max(gridI[i], boost);
-      else if (!anyFresh && gm.kind[i] === CELL_EMPTY && Math.floor(i / g.w) < Math.max(2, g.h / 3)) {
+      else if (!anyFresh && gm.kind[i] === CELL_EMPTY && gridCell(g, i).col < Math.max(2, g.w / 3)) {
         gridGlyph[i] = "\u2591";
         gridColor[i] = pal.gridBlueLt;
         gridI[i] = 0.5 * boost;
@@ -1445,7 +1450,7 @@ function drawScene(f, L, s, pal, opts) {
       for (let l = 0;l < n; l++) {
         const cell = att[l % att.length];
         const sl = lit[l % lit.length];
-        fanA.line(0, ay(g.y + Math.floor(cell / g.w)), ax1, ay(slots.ys[sl]), pal.route, lineI, { upTo: Math.min(1, u / 0.3) });
+        fanA.line(0, ay(gridCell(g, cell).y), ax1, ay(slots.ys[sl]), pal.route, lineI, { upTo: Math.min(1, u / 0.3) });
       }
     }
     const eI = stageI(u, 0.3, 0.42, sweep);
@@ -1515,8 +1520,7 @@ function drawScene(f, L, s, pal, opts) {
   if (fanB && full)
     fanB.blitTo(f, L.fanB.x, L.fanB.y, bg);
   for (let i = 0;i < cells; i++) {
-    const x = g.x + i % g.w;
-    const y = g.y + Math.floor(i / g.w);
+    const { x, y } = gridCell(g, i);
     const a = attended.get(i);
     if (a !== undefined && a > 0.05 && gm.kind[i] !== CELL_EMPTY)
       f.set(x, y, "\u25CF", sh(pal.attendDot, Math.max(0.35, a)), bg);

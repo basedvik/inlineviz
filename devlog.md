@@ -260,3 +260,15 @@ only 1.18.32, the `/opt/homebrew/bin/opencode` symlink resolves to it, `brew inf
   `cli.json` `plugins`, with `sidebar.content` and `session.panel` slots. The CLI's latest release is
   1.19.0 (V1); `@opencode/plugin` is at 2.0.27. V2 support is parked debt (a new host file + event
   mapping; the core is reusable). tps-meter's `./tui` + `./v2/tui` layout is the reference.
+
+## 2026-10-13: context grid fills column-major
+
+User report (screenshot, qwen3.8-27b, `ctx 20k/262k` in the sidebar): only the top-left blocks drove the
+animation. The cause: the grid is drawn to scale against the context *limit* and filled row-major, so ~8%
+usage put every filled cell, every attention dot, and therefore every bright router line in one row.
+- The grid now fills **column-major** (columns left → right, each top → bottom) via a single `gridCell()`
+  helper in `layout.ts`, used by the grid drawing, the prefill wave, and the router-line origins.
+  Proportions are unchanged (still honest); a small context now spans many rows.
+- Attention picks are less recency-biased (`r^2.2` → `r^1.4`).
+- New test `GridFillsColumnMajor` (8% of a 262k context at 40×14 spans > 3 rows, ≤ 2 columns).
+  Goldens were regenerated after eyeballing 40×14 frames: the routing now leaves from ~8 rows instead of 1.

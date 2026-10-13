@@ -430,7 +430,7 @@ Write `layout.test.ts` **first** with exact expected rects at `40×14`, `62×19`
 ### 9.2 Static elements
 
 - **Border:** rounded box `╭╮╰╯─│` in `pal.border`, segments drawn with tdef-style brackets `┤ text ├` (`embedSegment` / `centerEmbed` ported into `frame.ts`).
-- **Context grid** `grid.w × grid.h`. `tokensPerCell = ceil(contextLimit / (grid.w*grid.h))`. Fill row-major:
+- **Context grid** `grid.w × grid.h`. `tokensPerCell = ceil(contextLimit / (grid.w*grid.h))`. Fill **column-major** (each column top → bottom, columns left → right; `gridCell()` in layout.ts), so a small context still spans many rows:
   1. cached `cacheRead` → `▓` gridBlue
   2. fresh `input + cacheWrite` → `▒` gridBlueLt
   3. generated this turn (`sim.generated`, in order): reasoning = violet, text = amber; partial last cell uses the ramp `░▒▓█`
@@ -459,7 +459,7 @@ Render a pulse at `u = (sim.tick − bornTick) / sweepTicks`:
 
 | u | Stage | Drawing |
 |---|---|---|
-| 0.00–0.30 | attend + route | pick `m = 3..6` filled grid cells biased to recent (`idx = n−1−floor(n·r^2.2)`); orange `●` on them; router lines from them to the chosen experts, **revealed progressively** (`upTo = u/0.30`) |
+| 0.00–0.30 | attend + route | pick `m = 2..4` filled grid cells mildly biased to recent (`idx = n−1−floor(n·r^1.4)`; newest pulse only); orange `●` on them; router lines from them to the chosen experts, **revealed progressively** (`upTo = u/0.30`) |
 | 0.30–0.42 | experts fire | chosen expert rows at intensity 1.0 in their hue; shared pulse too. For MoE, re-pick the *k* experts each time the layer counter changes (visible per-layer re-routing) |
 | 0.42–0.52 | hidden | ~35% of hidden rows lit (seeded by pulse index) |
 | 0.52–0.85 | project | logit lines from lit hidden rows to all outputs, progressive, alternating meshPink/meshBlue per cell |

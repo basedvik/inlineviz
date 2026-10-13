@@ -272,3 +272,26 @@ describe("live recording replay", () => {
     expect(last!.phase).toBe("idle");
   });
 });
+
+describe("context grid fill order", () => {
+  test("GridFillsColumnMajor (small context spans many rows)", async () => {
+    const { gridCell } = await import("../src/core/render/layout.ts");
+    const sigs: Signal[] = [
+      { t: "model", ts: 0, model: { providerID: "p", modelID: "claude", contextLimit: 262144 } },
+      { t: "step.end", ts: 10, usage: usage({ input: 2000, cacheRead: 18000 }) }, // ~8% like the screenshot
+    ];
+    const sim = simAt(sigs, 5);
+    const L = layout(40, 14, sim.arch);
+    if (L.mode !== "compact") throw new Error("expected compact");
+    const f = renderViz(40, 14, sim, PAL, OPTS);
+    const rows = new Set<number>(), cols = new Set<number>();
+    for (let i = 0; i < L.grid.w * L.grid.h; i++) {
+      const { x, y } = gridCell(L.grid, i);
+      if (f.ch[y * f.w + x] === "▓" || f.ch[y * f.w + x] === "▒") { rows.add(y); cols.add(x); }
+    }
+    expect(rows.size).toBeGreaterThan(3); // row-major fill would put all of it in one row
+    expect(cols.size).toBeLessThanOrEqual(2);
+    expect(gridCell(L.grid, 0)).toMatchObject({ col: 0, row: 0 });
+    expect(gridCell(L.grid, L.grid.h)).toMatchObject({ col: 1, row: 0 });
+  });
+});

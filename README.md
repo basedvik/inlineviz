@@ -30,6 +30,53 @@ because that loop *is* how an LLM writes.
 Installing means adding one line to OpenCode's TUI config file, **`~/.config/opencode/tui.json`**, and
 restarting OpenCode. If the file doesn't exist yet, create it.
 
+### Easiest: ask your AI coding agent
+
+Paste this into Claude Code, Codex, Cursor, OpenCode itself, or any agent that can run shell commands:
+
+```text
+Install the OpenCode plugin from https://github.com/basedvik/inlineviz into my OpenCode.
+Follow the "Instructions for AI agents" section of its README exactly.
+```
+
+<details>
+<summary><b>Instructions for AI agents</b> (people can skip this)</summary>
+
+You are installing the `inlineviz` TUI plugin into the user's OpenCode. Follow these steps in order.
+Don't improvise other install methods.
+
+1. **Check OpenCode.** Run `opencode --version`. Continue only if it's `1.18.x` or `1.19.x`. If it's
+   2.x or newer, stop and tell the user OpenCode 2 isn't supported yet. If `opencode` isn't found, stop
+   and say OpenCode must be installed first.
+2. **Find the config file.** It's `$XDG_CONFIG_HOME/opencode/tui.json` if `XDG_CONFIG_HOME` is set,
+   otherwise `~/.config/opencode/tui.json`. Plugins for the visualizer go in **`tui.json` only**. Never
+   put it in `opencode.json` / `opencode.jsonc`.
+3. **Back it up.** If `tui.json` exists, copy it to `tui.json.backup-before-inlineviz` in the same
+   folder before changing anything.
+4. **Pick the plugin entry:**
+   - Run `npm view inlineviz version`. If it prints a version, the entry is `"inlineviz@latest"`.
+   - If that fails (not published / npm missing), install from source:
+     `git clone https://github.com/basedvik/inlineviz.git ~/.local/share/inlineviz` (if the folder
+     already exists, run `git -C ~/.local/share/inlineviz pull` instead). Confirm
+     `~/.local/share/inlineviz/dist/tui.js` exists. The entry is `"file://<absolute path>"` using the
+     **fully expanded** path (e.g. `file:///Users/alex/.local/share/inlineviz`; `~` is not expanded).
+     No build step and no `bun install` are needed.
+5. **Edit `tui.json` by merging, not replacing.** Parse the existing JSON. Ensure a top-level `"plugin"`
+   array exists, and append the entry to it. Keep every existing entry and all other keys. If an
+   `inlineviz` entry (npm or a path ending in `inlineviz`) is already present, don't add a second one.
+   If the file didn't exist, create it as `{ "plugin": [ <entry> ] }`. If the file contains comments
+   (JSONC), edit it as text and keep the comments. Re-read it afterwards to confirm it's still valid.
+6. **Don't** start, restart or send keystrokes to OpenCode yourself (an update prompt could capture
+   them), and don't change any other OpenCode settings.
+7. **Tell the user:**
+   - quit OpenCode completely and reopen it;
+   - open a session: the visualizer appears in the right sidebar above "Context" (widen the terminal
+     if the sidebar is hidden);
+   - type `/viz-demo` to see a demo, or `/viz` for the full-size view;
+   - to undo: restore `tui.json.backup-before-inlineviz` (or remove the `inlineviz` entry) and restart.
+
+</details>
+
 ### Option 1: from npm (recommended)
 
 > ⏳ **Not published to npm yet.** Until it is, use Option 2.

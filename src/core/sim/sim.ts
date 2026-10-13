@@ -52,6 +52,8 @@ export interface SimState {
   model?: ModelRef;
   arch: Arch;
   archOverrides?: Readonly<Record<string, Arch>>;
+  /** Shapes discovered at runtime (server metadata / Hugging Face), keyed by modelID. */
+  discovered: Map<string, Arch>;
   contextLimit: number;
   contextApprox: boolean;
 
@@ -106,6 +108,7 @@ export function createSim(sessionKey = "default", archOverrides?: Readonly<Recor
     stream: "text",
     arch: UNKNOWN,
     archOverrides,
+    discovered: new Map(),
     contextLimit: DEFAULT_CONTEXT,
     contextApprox: true,
     stepOpen: false,
@@ -206,11 +209,16 @@ export function applySignal(s: SimState, sig: Signal): void {
   switch (sig.t) {
     case "model": {
       s.model = sig.model;
-      s.arch = archFor(sig.model, s.archOverrides);
+      s.arch = archFor(sig.model, s.archOverrides, s.discovered);
       if (sig.model.contextLimit && sig.model.contextLimit > 0) {
         s.contextLimit = sig.model.contextLimit;
         s.contextApprox = false;
       }
+      return;
+    }
+    case "arch": {
+      s.discovered.set(sig.modelID, sig.arch);
+      if (s.model?.modelID === sig.modelID) s.arch = archFor(s.model, s.archOverrides, s.discovered);
       return;
     }
     case "turn.start": {
@@ -321,9 +329,10 @@ export function applySignal(s: SimState, sig: Signal): void {
       return;
     }
     case "reset": {
-      const keep = { calib: s.calib, overrides: s.archOverrides, tick: s.tick };
+      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick };
       Object.assign(s, createSim(sig.sessionKey, keep.overrides));
       s.calib = keep.calib;
+      s.discovered = keep.discovered;
       s.tick = keep.tick;
       s.phaseTick = keep.tick;
       s.lastSignalTick = keep.tick;

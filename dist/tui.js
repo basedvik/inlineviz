@@ -3,6 +3,155 @@
 import { RGBA } from "@opentui/core";
 import { createComponent, createElement, setProp } from "@opentui/solid";
 
+// src/core/archparse.ts
+var num = (v) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : undefined;
+var first = (...vs) => {
+  for (const v of vs) {
+    const n = num(v);
+    if (n !== undefined)
+      return n;
+  }
+  return;
+};
+function fullAttention(layerTypes) {
+  if (!Array.isArray(layerTypes) || !layerTypes.length)
+    return;
+  const idx = layerTypes.flatMap((t, i) => typeof t === "string" && /full/i.test(t) ? [i + 1] : []);
+  return idx.length && idx.length < layerTypes.length ? idx : undefined;
+}
+function archFromHFConfig(cfg, family) {
+  if (!cfg || typeof cfg !== "object")
+    return;
+  const top = cfg;
+  const t = top.text_config && typeof top.text_config === "object" ? top.text_config : top;
+  const pick = (...keys) => first(...keys.map((k) => t[k]), ...keys.map((k) => top[k]));
+  const layers = pick("num_hidden_layers", "n_layer", "num_layers", "n_layers");
+  if (!layers)
+    return;
+  const fam = family ?? String(t.model_type ?? top.model_type ?? "hf");
+  const experts = pick("num_experts", "num_local_experts", "n_routed_experts", "moe_num_experts", "n_experts");
+  const active = pick("num_experts_per_tok", "num_selected_experts", "moe_top_k", "moe_topk", "top_k_experts");
+  const fa = fullAttention(t.layer_types ?? top.layer_types);
+  if (experts && experts > 1 && active) {
+    const shared = first(t.n_shared_experts, t.num_shared_experts, top.n_shared_experts) ?? (num(t.shared_expert_intermediate_size ?? top.shared_expert_intermediate_size) ? 1 : 0);
+    return { kind: "moe", family: fam, layers, experts, active, shared, source: "hf", ...fa ? { fullAttention: fa } : {} };
+  }
+  return { kind: "dense", family: fam, layers, source: "hf", ...fa ? { fullAttention: fa } : {} };
+}
+function archFromOllamaShow(show, family) {
+  const info = show?.model_info;
+  if (!info || typeof info !== "object")
+    return;
+  const find = (suffix) => {
+    for (const [k, v] of Object.entries(info))
+      if (k.endsWith(suffix))
+        return num(v);
+    return;
+  };
+  const layers = find(".block_count");
+  if (!layers)
+    return;
+  const arch = String(info["general.architecture"] ?? family ?? "ollama");
+  const experts = find(".expert_count");
+  const active = find(".expert_used_count");
+  if (experts && experts > 1 && active) {
+    return { kind: "moe", family: family ?? arch, layers, experts, active, shared: find(".expert_shared_count") ?? 0, source: "server" };
+  }
+  return { kind: "dense", family: family ?? arch, layers, source: "server" };
+}
+function archFromServerMeta(meta, family) {
+  if (!meta || typeof meta !== "object")
+    return {};
+  const m = meta;
+  const layers = first(m.num_layers, m.n_layer, m.num_hidden_layers, m.block_count);
+  const isMoe = typeof m.is_moe === "boolean" ? m.is_moe : undefined;
+  const experts = first(m.num_experts, m.expert_count);
+  const active = first(m.num_experts_per_tok, m.expert_used_count);
+  const fam = family ?? String(m.architecture ?? "server");
+  if (layers && experts && experts > 1 && active) {
+    return { arch: { kind: "moe", family: fam, layers, experts, active, shared: first(m.n_shared_experts, m.expert_shared_count) ?? 0, source: "server" }, layers, isMoe: true };
+  }
+  if (layers && isMoe === false)
+    return { arch: { kind: "dense", family: fam, layers, source: "server" }, layers, isMoe };
+  return { layers, isMoe };
+}
+function mergeArch(server, hf) {
+  if (server?.arch)
+    return server.arch;
+  if (!hf)
+    return;
+  if (hf.kind === "unknown")
+    return hf;
+  const layers = server?.layers ?? hf.layers;
+  if (server?.isMoe === false)
+    return { kind: "dense", family: hf.family, layers, source: "server", ...hf.fullAttention ? { fullAttention: hf.fullAttention } : {} };
+  if (server?.isMoe === true && hf.kind === "dense")
+    return;
+  return { ...hf, layers };
+}
+function looksLikeHFRepo(modelID) {
+  return /^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(modelID) && !modelID.includes("..");
+}
+
+// src/adapters/discover.ts
+var DAY = 24 * 3600 * 1000;
+var TTL_HIT = 7 * DAY;
+var TTL_MISS = DAY;
+async function discoverArch(input, deps) {
+  if (deps.lookup === "off")
+    return;
+  const key = `inlineviz.arch:${input.providerID}/${input.modelID}`;
+  const cached = deps.cache?.get(key);
+  if (cached && typeof cached.at === "number" && deps.now() - cached.at < (cached.arch ? TTL_HIT : TTL_MISS)) {
+    deps.log?.({ tag: "arch", modelID: input.modelID, from: "cache", arch: cached.arch ?? null });
+    return cached.arch;
+  }
+  const timeout = deps.timeoutMs ?? 4000;
+  const getJson = async (url, init) => {
+    try {
+      const res = await deps.fetch(url, { ...init, signal: AbortSignal.timeout(timeout) });
+      if (!res.ok)
+        return;
+      return await res.json();
+    } catch {
+      return;
+    }
+  };
+  let server;
+  const base = input.baseURL?.replace(/\/+$/, "");
+  if (base && /^https?:\/\//.test(base)) {
+    const list = await getJson(`${base}/models`);
+    const entry = Array.isArray(list?.data) ? list.data.find((m) => m?.id === input.modelID) : undefined;
+    if (entry?.meta)
+      server = archFromServerMeta(entry.meta);
+    if (!server?.arch) {
+      const origin = new URL(base).origin;
+      const version = await getJson(`${origin}/api/version`);
+      if (version && typeof version.version === "string") {
+        const show = await getJson(`${origin}/api/show`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model: input.modelID })
+        });
+        const o = archFromOllamaShow(show);
+        if (o)
+          server = { arch: o, layers: o.kind === "unknown" ? undefined : o.layers };
+      }
+    }
+  }
+  let hf;
+  if (deps.lookup === "all" && looksLikeHFRepo(input.modelID)) {
+    hf = archFromHFConfig(await getJson(`https://huggingface.co/${input.modelID}/raw/main/config.json`));
+  }
+  let arch = mergeArch(server, hf);
+  if (arch && server?.arch && hf && hf.kind === arch.kind && arch.kind !== "unknown" && hf.kind !== "unknown" && hf.layers === arch.layers && hf.fullAttention && !arch.fullAttention) {
+    arch = { ...arch, fullAttention: hf.fullAttention };
+  }
+  deps.cache?.set(key, { at: deps.now(), ...arch ? { arch } : {} });
+  deps.log?.({ tag: "arch", modelID: input.modelID, from: arch?.source ?? "none", arch: arch ?? null });
+  return arch;
+}
+
 // src/adapters/opencode.ts
 var OPENCODE_EVENT_TYPES = [
   "session.status",
@@ -579,21 +728,24 @@ function normalizeModelID(id) {
   const i = s.lastIndexOf("/");
   return i >= 0 ? s.slice(i + 1) : s;
 }
-function archFor(model, overrides) {
+function archFor(model, overrides, discovered) {
   if (!model)
     return UNKNOWN;
   const id = normalizeModelID(model.modelID);
   if (overrides) {
     for (const [pat, arch] of Object.entries(overrides)) {
       try {
-        if (new RegExp(pat, "i").test(id))
-          return arch;
+        if (new RegExp(pat, "i").test(id) || new RegExp(pat, "i").test(model.modelID))
+          return { ...arch, source: "override" };
       } catch {}
     }
   }
+  const found = discovered?.get(model.modelID);
+  if (found && found.kind !== "unknown")
+    return found;
   for (const r of RULES)
     if (r.re.test(id))
-      return r.arch;
+      return { ...r.arch, source: "table" };
   return UNKNOWN;
 }
 function archSummary(a) {
@@ -658,6 +810,7 @@ function createSim(sessionKey = "default", archOverrides) {
     stream: "text",
     arch: UNKNOWN,
     archOverrides,
+    discovered: new Map,
     contextLimit: DEFAULT_CONTEXT,
     contextApprox: true,
     stepOpen: false,
@@ -755,11 +908,17 @@ function applySignal(s, sig) {
   switch (sig.t) {
     case "model": {
       s.model = sig.model;
-      s.arch = archFor(sig.model, s.archOverrides);
+      s.arch = archFor(sig.model, s.archOverrides, s.discovered);
       if (sig.model.contextLimit && sig.model.contextLimit > 0) {
         s.contextLimit = sig.model.contextLimit;
         s.contextApprox = false;
       }
+      return;
+    }
+    case "arch": {
+      s.discovered.set(sig.modelID, sig.arch);
+      if (s.model?.modelID === sig.modelID)
+        s.arch = archFor(s.model, s.archOverrides, s.discovered);
       return;
     }
     case "turn.start": {
@@ -886,9 +1045,10 @@ function applySignal(s, sig) {
       return;
     }
     case "reset": {
-      const keep = { calib: s.calib, overrides: s.archOverrides, tick: s.tick };
+      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick };
       Object.assign(s, createSim(sig.sessionKey, keep.overrides));
       s.calib = keep.calib;
+      s.discovered = keep.discovered;
       s.tick = keep.tick;
       s.phaseTick = keep.tick;
       s.lastSignalTick = keep.tick;
@@ -1606,6 +1766,18 @@ function placeSegs(f, y, segs, x0, x1, border) {
   }
   return [...chosen];
 }
+function archSourceTag(a) {
+  switch (a.source) {
+    case "server":
+      return " \xB7 via server";
+    case "hf":
+      return " \xB7 via HF";
+    case "override":
+      return " \xB7 custom";
+    default:
+      return "";
+  }
+}
 function honestyLabel(arch, full) {
   if (arch.kind === "unknown")
     return full ? "architecture unknown" : "arch unknown";
@@ -1640,7 +1812,8 @@ function drawHud(f, L, s, pal, opts, newest, cv, border, failI) {
           lay = "L ?";
         else if (newest) {
           const u = pulseU(s, newest);
-          lay = `L ${1 + Math.min(arch.layers - 1, Math.floor(u * arch.layers))}/${arch.layers}`;
+          const L = 1 + Math.min(arch.layers - 1, Math.floor(u * arch.layers));
+          lay = `L ${L}/${arch.layers}${arch.fullAttention?.includes(L) ? " full-attn" : ""}`;
         } else
           lay = `L \u2013/${arch.layers}`;
         const ttft = s.ttftTicks !== undefined ? `  ttft ${secs(s.ttftTicks)}` : "";
@@ -1665,7 +1838,7 @@ function drawHud(f, L, s, pal, opts, newest, cv, border, failI) {
   }
   const modelName = s.model ? normalizeModelID(s.model.modelID) : "no model yet";
   const top = [
-    { text: full ? `${modelName} \xB7 ${archSummary(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
+    { text: full ? `${modelName} \xB7 ${archSummary(arch)}${archSourceTag(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
     { text: phaseText, fg: phaseColor, side: "r", prio: 3, bold: true }
   ];
   if (s.subagentsBusy > 0)
@@ -1793,6 +1966,7 @@ function parseOptions(o) {
     labels: v.labels !== false,
     fps: typeof v.fps === "number" && v.fps >= 1 ? Math.min(30, v.fps) : 20,
     idleFps: typeof v.idleFps === "number" && v.idleFps >= 0 ? Math.min(30, v.idleFps) : 0,
+    archLookup: v.archLookup === "server" || v.archLookup === "off" ? v.archLookup : "all",
     arch: v.arch
   };
 }
@@ -1812,7 +1986,37 @@ var tui = async (api, options) => {
     if (Date.now() < demoUntil)
       return;
     driver.push(s);
+    if (s.t === "model")
+      discover(s.model.providerID, s.model.modelID);
   };
+  const asked = new Set;
+  const kvCache = {
+    get: (k) => {
+      try {
+        return api.kv.ready ? api.kv.get(k, undefined) : undefined;
+      } catch {
+        return;
+      }
+    },
+    set: (k, v) => {
+      try {
+        if (api.kv.ready)
+          api.kv.set(k, v);
+      } catch {}
+    }
+  };
+  function discover(providerID, modelID) {
+    const key = `${providerID}/${modelID}`;
+    if (asked.has(key) || opts.archLookup === "off")
+      return;
+    asked.add(key);
+    const provider = api.state.provider.find((p) => p.id === providerID);
+    const baseURL = typeof provider?.options?.baseURL === "string" ? provider.options.baseURL : undefined;
+    discoverArch({ providerID, modelID, baseURL }, { fetch, lookup: opts.archLookup, now: Date.now, cache: kvCache, log: debug }).then((arch) => {
+      if (arch)
+        driver.push({ t: "arch", ts: Date.now(), modelID, arch });
+    }).catch(() => {});
+  }
   const activeSessionID = () => {
     const r = api.route.current;
     return r.name === "session" && typeof r.params?.sessionID === "string" ? r.params.sessionID : undefined;

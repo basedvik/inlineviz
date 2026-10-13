@@ -5,17 +5,21 @@
 
 import { createOpencodeClient } from "@opencode-ai/sdk";
 import type { SignalSink } from "../core/protocol.ts";
+import { discoverArch } from "./discover.ts";
 import { OpenCodeAdapter, type OpenCodeEvent } from "./opencode.ts";
 
 export function attachOpenCode(baseUrl: string, sink: SignalSink, now: () => number, sessionID?: string) {
   const client = createOpencodeClient({ baseUrl });
   const limits = new Map<string, number>();
+  const baseURLs = new Map<string, string>();
+  const asked = new Set<string>();
   let stopped = false;
 
   const loadLimits = async () => {
     try {
       const res: any = await client.config.providers();
       for (const p of res?.data?.providers ?? []) {
+        if (typeof p.options?.baseURL === "string") baseURLs.set(p.id, p.options.baseURL);
         for (const [id, m] of Object.entries<any>(p.models ?? {})) {
           if (m?.limit?.context) limits.set(`${p.id}/${id}`, m.limit.context);
         }
@@ -25,7 +29,19 @@ export function attachOpenCode(baseUrl: string, sink: SignalSink, now: () => num
     }
   };
 
-  const adapter = new OpenCodeAdapter(sink, {
+  // Same discovery as the TUI plugin (no persistent cache in the CLI).
+  const withArch: SignalSink = (s) => {
+    sink(s);
+    if (s.t !== "model") return;
+    const key = `${s.model.providerID}/${s.model.modelID}`;
+    if (asked.has(key)) return;
+    asked.add(key);
+    void discoverArch({ providerID: s.model.providerID, modelID: s.model.modelID, baseURL: baseURLs.get(s.model.providerID) }, { fetch, lookup: "all", now })
+      .then((arch) => { if (arch) sink({ t: "arch", ts: now(), modelID: s.model.modelID, arch }); })
+      .catch(() => {});
+  };
+
+  const adapter = new OpenCodeAdapter(withArch, {
     activeSessionID: () => sessionID,
     contextLimit: (providerID, modelID) => limits.get(`${providerID}/${modelID}`),
     now,

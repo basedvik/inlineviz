@@ -14,6 +14,7 @@
 import type { TuiPlugin, TuiPluginApi, TuiPluginModule } from "@opencode-ai/plugin/tui";
 import { RGBA } from "@opentui/core";
 import { createComponent, createElement, setProp } from "@opentui/solid";
+import { type ArchLookup, discoverArch } from "../adapters/discover.ts";
 import { OPENCODE_EVENT_TYPES, OpenCodeAdapter } from "../adapters/opencode.ts";
 import { FrameCopier, type RGBAFactory, rgbaToInt } from "../backends/opentui.ts";
 import { demoDuration, demoSignals } from "../core/demo.ts";
@@ -41,6 +42,8 @@ export type VizOptions = {
   fps?: number;
   /** Idle animation rate (default 0 = static idle frame; each frame re-renders OpenCode's whole screen). */
   idleFps?: number;
+  /** Architecture discovery: "all" (server + Hugging Face, default), "server" (your servers only), "off". */
+  archLookup?: ArchLookup;
   arch?: Record<string, Arch>;
 };
 
@@ -58,6 +61,7 @@ function parseOptions(o: unknown): Required<Omit<VizOptions, "arch">> & { arch?:
     labels: v.labels !== false,
     fps: typeof v.fps === "number" && v.fps >= 1 ? Math.min(30, v.fps) : 20,
     idleFps: typeof v.idleFps === "number" && v.idleFps >= 0 ? Math.min(30, v.idleFps) : 0,
+    archLookup: v.archLookup === "server" || v.archLookup === "off" ? v.archLookup : ("all" as ArchLookup),
     arch: v.arch,
   };
 }
@@ -81,7 +85,25 @@ const tui: TuiPlugin = async (api: TuiPluginApi, options) => {
   const push = (s: Signal) => {
     if (Date.now() < demoUntil) return;
     driver.push(s);
+    if (s.t === "model") discover(s.model.providerID, s.model.modelID);
   };
+
+  // Discover the real shape of the model in use (server metadata / Hugging Face), once per model.
+  const asked = new Set<string>();
+  const kvCache = {
+    get: (k: string) => { try { return api.kv.ready ? api.kv.get(k, undefined) : undefined; } catch { return undefined; } },
+    set: (k: string, v: unknown) => { try { if (api.kv.ready) api.kv.set(k, v); } catch { /* ignore */ } },
+  };
+  function discover(providerID: string, modelID: string) {
+    const key = `${providerID}/${modelID}`;
+    if (asked.has(key) || opts.archLookup === "off") return;
+    asked.add(key);
+    const provider = api.state.provider.find((p) => p.id === providerID) as any;
+    const baseURL = typeof provider?.options?.baseURL === "string" ? provider.options.baseURL : undefined;
+    void discoverArch({ providerID, modelID, baseURL }, { fetch, lookup: opts.archLookup, now: Date.now, cache: kvCache, log: debug })
+      .then((arch) => { if (arch) driver.push({ t: "arch", ts: Date.now(), modelID, arch }); })
+      .catch(() => { /* discovery is best-effort */ });
+  }
 
   const activeSessionID = () => {
     const r = api.route.current as { name: string; params?: Record<string, unknown> };

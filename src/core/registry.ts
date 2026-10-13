@@ -6,10 +6,13 @@
 
 import type { ModelRef } from "./protocol.ts";
 
+/** Where an Arch came from, most exact first. */
+export type ArchSource = "override" | "server" | "hf" | "table";
+
 export type Arch =
-  | { kind: "moe"; family: string; layers: number; experts: number; active: number; shared: number; note?: string }
-  | { kind: "dense"; family: string; layers: number; note?: string }
-  | { kind: "unknown"; family: string; note?: string };
+  | { kind: "moe"; family: string; layers: number; experts: number; active: number; shared: number; note?: string; source?: ArchSource; fullAttention?: number[] }
+  | { kind: "dense"; family: string; layers: number; note?: string; source?: ArchSource; fullAttention?: number[] }
+  | { kind: "unknown"; family: string; note?: string; source?: ArchSource };
 
 type Rule = { re: RegExp; arch: Arch };
 
@@ -48,19 +51,29 @@ export function normalizeModelID(id: string): string {
   return i >= 0 ? s.slice(i + 1) : s;
 }
 
-export function archFor(model: ModelRef | undefined, overrides?: Readonly<Record<string, Arch>>): Arch {
+/**
+ * Resolve a model's architecture: user override → discovered (server / Hugging Face) → curated
+ * table → unknown. `discovered` is keyed by the raw modelID.
+ */
+export function archFor(
+  model: ModelRef | undefined,
+  overrides?: Readonly<Record<string, Arch>>,
+  discovered?: ReadonlyMap<string, Arch>,
+): Arch {
   if (!model) return UNKNOWN;
   const id = normalizeModelID(model.modelID);
   if (overrides) {
     for (const [pat, arch] of Object.entries(overrides)) {
       try {
-        if (new RegExp(pat, "i").test(id)) return arch;
+        if (new RegExp(pat, "i").test(id) || new RegExp(pat, "i").test(model.modelID)) return { ...arch, source: "override" } as Arch;
       } catch {
         /* invalid user regex: ignore */
       }
     }
   }
-  for (const r of RULES) if (r.re.test(id)) return r.arch;
+  const found = discovered?.get(model.modelID);
+  if (found && found.kind !== "unknown") return found;
+  for (const r of RULES) if (r.re.test(id)) return { ...r.arch, source: "table" } as Arch;
   return UNKNOWN;
 }
 

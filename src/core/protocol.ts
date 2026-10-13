@@ -4,6 +4,8 @@
 // proxies) emits these. They are JSON-serializable so the same type flows
 // in-process, over NDJSON, in replay files and across sockets. `ts` is epoch ms.
 
+import type { Arch } from "./registry.ts";
+
 export type ModelRef = {
   providerID: string;
   modelID: string;
@@ -24,6 +26,8 @@ export type Stream = "text" | "reasoning";
 
 export type Signal =
   | { t: "model"; ts: number; model: ModelRef }
+  /** A model's real shape, discovered from its server or Hugging Face (see core/archparse.ts). */
+  | { t: "arch"; ts: number; modelID: string; arch: Arch }
   | { t: "turn.start"; ts: number }
   | { t: "step.start"; ts: number }
   | { t: "delta"; ts: number; kind: Stream; chars: number; tokens?: number }
@@ -40,7 +44,7 @@ export type SignalType = Signal["t"];
 export type SignalSink = (s: Signal) => void;
 
 const TYPES: ReadonlySet<string> = new Set<SignalType>([
-  "model", "turn.start", "step.start", "delta", "tool.start", "tool.end",
+  "model", "arch", "turn.start", "step.start", "delta", "tool.start", "tool.end",
   "step.end", "retry", "error", "idle", "subagents", "reset",
 ]);
 
@@ -53,6 +57,10 @@ export function isSignal(v: unknown): v is Signal {
     case "model": {
       const m = o.model as Record<string, unknown> | undefined;
       return !!m && typeof m.providerID === "string" && typeof m.modelID === "string";
+    }
+    case "arch": {
+      const a = o.arch as Record<string, unknown> | undefined;
+      return typeof o.modelID === "string" && !!a && (a.kind === "moe" || a.kind === "dense" || a.kind === "unknown");
     }
     case "delta":
       return (o.kind === "text" || o.kind === "reasoning") && typeof o.chars === "number";

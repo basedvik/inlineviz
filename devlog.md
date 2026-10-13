@@ -272,3 +272,44 @@ usage put every filled cell, every attention dot, and therefore every bright rou
 - Attention picks are less recency-biased (`r^2.2` → `r^1.4`).
 - New test `GridFillsColumnMajor` (8% of a 262k context at 40×14 spans > 3 rows, ≤ 2 columns).
   Goldens were regenerated after eyeballing 40×14 frames: the routing now leaves from ~8 rows instead of 1.
+
+## 2026-10-13: architecture discovery (server metadata + Hugging Face)
+
+User question: how to accurately get the shape of their own models (screenshot: `qwen3.8-27b-bf` showed
+`arch unknown`). What I found, live:
+- **OpenCode's config / models.dev metadata** identifies models (family, `open_weights`,
+  `canonical_model_id`) but never describes them (no layers/experts). A name table alone breaks on
+  community builds.
+- **mlx-serve** (the user's Mac Studio, `http://…:11234/v1/models`) reports `num_layers` and `is_moe`
+  in each model's `meta`. **llama.cpp** reports only `n_embd`/`n_params`/`n_ctx_train`, with no layers.
+- **Hugging Face `config.json`** is exact whenever the model ID is a repo ID (true for MLX):
+  `mlx-community/Qwen3.8-27B-bf16` = dense, 64 layers, `layer_types` 3 linear : 1 full attention;
+  `ddalcu/Qwen3.8-Flash-Next-…` = MoE 512 experts / 10 active / shared expert, 48 layers. mlx-serve's
+  `architecture: "qwen3_5_moe"` label for the 27B is just a family string; its `is_moe: false` and the HF
+  config agree that it's dense.
+
+Built:
+- `src/core/archparse.ts` (pure): `archFromHFConfig` (incl. `text_config` wrappers, shared experts via
+  `n_shared_experts` / `shared_expert_intermediate_size`, full-attention layers from `layer_types`),
+  `archFromOllamaShow` (GGUF `*.block_count` / `*.expert_count` / `*.expert_used_count`),
+  `archFromServerMeta` (mlx-serve), `mergeArch`, `looksLikeHFRepo`.
+- `src/adapters/discover.ts` (I/O): provider `baseURL` → `GET /models` meta → Ollama (`/api/version`
+  gate, then `POST /api/show`) → Hugging Face config (full shape, or only the attention pattern when
+  it agrees with the server). 4 s timeouts, no auth headers ever, cache hits 7 d / misses 1 d.
+- New `arch` Signal; Sim keeps `discovered` per modelID (survives resets). Resolution order:
+  override → discovered → table → unknown. HUD shows provenance (`· via server` / `· via HF` /
+  `· custom`) and marks full-attention layers in the layer counter (`L 4/64 full-attn`).
+- TUI plugin: discovery on every new model, cached in `api.kv`, option `archLookup` = all|server|off.
+  CLI `attach` uses it too (provider baseURLs from `/config/providers`).
+
+Evidence:
+- `bun test` → 127 pass. 22 new tests run against **real fixtures** (`test/fixtures/hf/*.json` fetched from
+  huggingface.co: Qwen3.8-27B, Flash-Next, DeepSeek-V3, Qwen3-30B-A3B; `test/fixtures/mlxserve-models.json`
+  from the user's mlx-serve). DeepSeek-V3 and Qwen3-30B-A3B parse to exactly the registry values.
+- Live discovery: 27B → `dense · 64L (via server)` + 16 full-attention layers in 260 ms; Flash-Next →
+  `MoE 512e/10a · 48L (via hf)` + 12 full-attention layers; llama.cpp qwen3.6 → unknown (expected); Claude → unknown.
+- Frames: the sidebar shows a dense `┃` column + `illustrative` label; full width shows
+  `dense · 64L · via server`; the layer counter sweeps 1→64 and shows `full-attn` on layers 4, 8, ….
+
+Open: llama.cpp-only setups still need the `arch` option (llama.cpp doesn't expose layer counts; reading
+the GGUF header locally would fix it when the file is on the same machine).

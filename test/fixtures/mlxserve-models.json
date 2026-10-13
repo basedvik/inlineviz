@@ -1,0 +1,28 @@
+{
+ "data": [
+  {
+   "id": "mlx-community/Qwen3.8-27B-bf16",
+   "object": "model",
+   "meta": {
+    "architecture": "qwen3_5_moe",
+    "engine": "mlx",
+    "vocab_size": 248320,
+    "hidden_size": 5120,
+    "num_layers": 64,
+    "quantization": "0-bit",
+    "context_length": 262144,
+    "model_max_tokens": 262144,
+    "embedding_max_length": null,
+    "is_moe": false,
+    "drafter_loaded": false,
+    "drafter_path": null,
+    "mtp_loaded": false,
+    "mtp_available": false,
+    "kv_quant": "8",
+    "gen_temperature": 1,
+    "gen_top_p": 0.95,
+    "gen_top_k": 20
+   }
+  }
+ ]
+}

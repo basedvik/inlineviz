@@ -160,8 +160,24 @@ Hosted APIs don't expose a model's internals, so the inside of the network is a 
 animation driven by real timing. Every frame says so in its bottom border (`illustrative routing`), and
 closed or unrecognized models show `architecture unknown` rather than made-up numbers.
 
-**Known architectures:** DeepSeek V3/R1, Kimi K2, Qwen3 (235B, 30B-A3B, Coder 480B), gpt-oss (120B, 20B),
-Mixtral, Llama 4 Maverick/Scout, GLM-4.5, Llama 3.x, Qwen2.5-Coder. Add your own with the `arch` option.
+### How it learns your model's shape
+
+The expert column shows the model's *real* layers and experts when it can find them. It looks, in order:
+
+1. **Your `arch` setting**, if you've set one (see Options).
+2. **The server running the model**, for local and self-hosted setups: **mlx-serve** reports layers and
+   whether it's MoE; **Ollama** reports layers and experts. (llama.cpp doesn't report enough, so for it
+   the next step or your setting is needed.)
+3. **Hugging Face**, when your model ID is a Hugging Face repo name like `mlx-community/Qwen3.8-27B-bf16`.
+   Its `config.json` gives exact layers, experts and attention pattern. This sends the model ID (and only
+   that) to huggingface.co; set `"archLookup": "server"` or `"off"` to prevent it.
+4. **A built-in table** of well-known open models: DeepSeek V3/R1, Kimi K2, Qwen3, gpt-oss, Mixtral,
+   Llama 3/4, GLM-4.5, Qwen2.5-Coder.
+
+The header shows where the shape came from (`· via server`, `· via HF`, `· custom`). Results are cached.
+If nothing knows the model (always true for closed models like Claude, GPT and Gemini, whose makers
+don't publish their architecture), it says **`arch unknown`** and draws the middle of the network as an
+abstract stack. Timing, tokens, context and tools are still real. No API keys are ever sent anywhere.
 
 ## Options
 
@@ -184,6 +200,7 @@ Optional. To change settings, wrap the entry in `[ entry, { settings } ]`:
 | `fps` | `20` | frame rate while the model is working |
 | `idleFps` | `0` | idle animation rate (`0` = still frame when idle) |
 | `asciiSafe` | `false` | use `◆`/`@` if your terminal draws `⬢`/`◉` too wide |
+| `archLookup` | `"all"` | how to find your model's shape: `"all"` (your server + Hugging Face), `"server"` (your servers only), `"off"` |
 | `arch` | – | teach it a model's shape: `{ "my-model-regex": { "kind": "moe", "family": "my-model", "layers": 48, "experts": 128, "active": 8, "shared": 0 } }` (or `{ "kind": "dense", "family": "x", "layers": 32 }`) |
 
 **Performance:** idle costs almost nothing (+~0.7% CPU in testing). While the model is working, animating

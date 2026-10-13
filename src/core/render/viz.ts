@@ -498,6 +498,16 @@ export function placeSegs(f: Frame, y: number, segs: Seg[], x0: number, x1: numb
   return [...chosen];
 }
 
+/** Where the shape came from, when it isn't the built-in table. */
+export function archSourceTag(a: Arch): string {
+  switch (a.source) {
+    case "server": return " · via server";
+    case "hf": return " · via HF";
+    case "override": return " · custom";
+    default: return "";
+  }
+}
+
 export function honestyLabel(arch: Arch, full: boolean): string {
   if (arch.kind === "unknown") return full ? "architecture unknown" : "arch unknown";
   return full ? "illustrative routing" : "illustrative";
@@ -536,7 +546,9 @@ function drawHud(
         if (arch.kind === "unknown") lay = "L ?";
         else if (newest) {
           const u = pulseU(s, newest);
-          lay = `L ${1 + Math.min(arch.layers - 1, Math.floor(u * arch.layers))}/${arch.layers}`;
+          const L = 1 + Math.min(arch.layers - 1, Math.floor(u * arch.layers));
+          // Hybrid-attention models (e.g. 3 linear : 1 full): mark the full-attention layers.
+          lay = `L ${L}/${arch.layers}${arch.fullAttention?.includes(L) ? " full-attn" : ""}`;
         } else lay = `L –/${arch.layers}`;
         const ttft = s.ttftTicks !== undefined ? `  ttft ${secs(s.ttftTicks)}` : "";
         phaseText = `▸ ${label}  ${lay}${tps ? "  " + tps : ""}${ttft}`;
@@ -561,7 +573,7 @@ function drawHud(
 
   const modelName = s.model ? normalizeModelID(s.model.modelID) : "no model yet";
   const top: Seg[] = [
-    { text: full ? `${modelName} · ${archSummary(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
+    { text: full ? `${modelName} · ${archSummary(arch)}${archSourceTag(arch)}` : modelName, fg: pal.text, side: "l", prio: 2, minLen: 6 },
     { text: phaseText, fg: phaseColor, side: "r", prio: 3, bold: true },
   ];
   if (s.subagentsBusy > 0) top.push({ text: `+${s.subagentsBusy} agents`, fg: pal.label, side: "l", prio: 1 });

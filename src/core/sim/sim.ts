@@ -22,6 +22,9 @@ export const ERROR_TICKS = 36;
 export const PULSE_MIN_GAP = 3; // ≤ 10 pulses/s
 export const MAX_PULSES = 6;
 export const FLASH_TTL = 45;
+/** Non-streaming hosts: show PREFILL this long after a step starts, then estimated WORKING pulses. */
+export const EST_PREFILL_TICKS = 18;
+export const DEFAULT_EST_TPS = 40;
 const CALIB_MIN_EST = 20;
 
 export interface Pulse {
@@ -30,6 +33,8 @@ export interface Pulse {
   tokens: number;
   stream: Stream;
   sweepTicks: number;
+  /** Estimated (non-streaming host): animates pace only; never counted into the context grid. */
+  est?: boolean;
 }
 
 export interface Flash {
@@ -83,6 +88,19 @@ export interface SimState {
 
   bank: number;
   draining: boolean;
+  /** False when the host can't stream deltas (Claude Code hooks): pace is estimated, labeled ≈. */
+  streaming: boolean;
+  /** Currently showing estimated WORKING pulses. */
+  estimating: boolean;
+  /** Learned real pace per model (tokens/s from completed non-streamed messages). */
+  estTps: Map<string, number>;
+  /**
+   * Non-streaming hosts: ticks of steps whose usage hasn't arrived yet. Usage lands late (Claude
+   * Code writes a message's usage after its tools ran and the next step began), so each usage
+   * pops the OLDEST start: the pace is measured against the right step and the current step
+   * keeps animating.
+   */
+  stepStarts: number[];
   tps: number;
   tpsApprox: boolean;
   lastDeltaTick: number;
@@ -125,6 +143,10 @@ export function createSim(sessionKey = "default", archOverrides?: Readonly<Recor
     turnText: 0,
     bank: 0,
     draining: false,
+    streaming: true,
+    estimating: false,
+    estTps: new Map(),
+    stepStarts: [],
     tps: 0,
     tpsApprox: false,
     lastDeltaTick: -1_000_000,
@@ -164,13 +186,20 @@ function addGenerated(s: SimState, stream: Stream, tokens: number): void {
   else s.turnText += tokens;
 }
 
-function spawnPulse(s: SimState, tokens: number): void {
+function spawnPulse(s: SimState, tokens: number, est = false): void {
   const sweep = Math.max(9, Math.min(20, Math.round(270 / Math.max(s.tps, 1))));
-  s.pulses.push({ index: s.nextPulseIndex++, bornTick: s.tick, tokens, stream: s.stream, sweepTicks: sweep });
+  s.pulses.push({ index: s.nextPulseIndex++, bornTick: s.tick, tokens, stream: s.stream, sweepTicks: sweep, ...(est ? { est: true } : {}) });
   s.bank -= tokens;
   if (s.bank < 1e-9) s.bank = 0;
   s.lastEmitTick = s.tick;
-  addGenerated(s, s.stream, tokens);
+  if (!est) addGenerated(s, s.stream, tokens);
+}
+
+/** Stop estimated WORKING pulses; their tokens were never real, so drop the bank. */
+function stopEstimating(s: SimState): void {
+  if (!s.estimating) return;
+  s.estimating = false;
+  s.bank = 0;
 }
 
 /** Leaving decode: emit whatever is left in the bank as one final pulse. */
@@ -221,12 +250,29 @@ export function applySignal(s: SimState, sig: Signal): void {
       if (s.model?.modelID === sig.modelID) s.arch = archFor(s.model, s.archOverrides, s.discovered);
       return;
     }
+    case "mode": {
+      s.streaming = sig.streaming;
+      if (s.streaming) stopEstimating(s);
+      return;
+    }
     case "turn.start": {
+      stopEstimating(s);
       startTurn(s);
       beginPrefill(s);
       return;
     }
     case "step.start": {
+      if (!s.streaming) {
+        if (s.phase === "idle" || s.phase === "error") startTurn(s);
+        // Drop starts that never got usage (aborted) so the queue can't drift for long.
+        while (s.stepStarts.length && (s.tick - s.stepStarts[0] > 10 * 60 * TICK_HZ || s.stepStarts.length >= 16)) s.stepStarts.shift();
+        s.stepStarts.push(s.tick);
+        s.stepOpen = true;
+        s.stepStartTick = s.tick;
+        if (s.phase !== "prefill") beginPrefill(s);
+        s.retryAttempt = undefined;
+        return;
+      }
       if (s.stepOpen) return; // duplicate
       if (s.phase === "idle" || s.phase === "error") startTurn(s);
       s.stepOpen = true;
@@ -261,6 +307,7 @@ export function applySignal(s: SimState, sig: Signal): void {
     }
     case "tool.start": {
       if (s.tools.has(sig.callID)) return;
+      stopEstimating(s);
       s.tools.set(sig.callID, { tool: sig.tool, startTick: s.tick });
       s.toolsCalled++;
       if (s.phase === "decode") flushBank(s);
@@ -274,6 +321,32 @@ export function applySignal(s: SimState, sig: Signal): void {
       return;
     }
     case "step.end": {
+      if (sig.usage && !s.streaming) {
+        // Non-streaming host: the message's REAL tokens land in the grid now (estimated pulses
+        // never counted), and the real average pace teaches the estimate for next time.
+        const u = sig.usage;
+        const started = s.stepStarts.shift();
+        s.usage = u;
+        s.promptTokens = promptTokens(u);
+        s.promptGenBase = s.genTotal;
+        addGenerated(s, "reasoning", u.reasoning);
+        addGenerated(s, "text", u.output);
+        const observed = u.output + u.reasoning;
+        const secs = started === undefined ? 0 : (s.tick - started) / TICK_HZ;
+        if (observed > 0 && secs > 0.3) {
+          const rate = observed / secs;
+          const key = calibKey(s);
+          const prev = s.estTps.get(key);
+          s.estTps.set(key, prev === undefined ? rate : prev + (rate - prev) * 0.5);
+          s.tps = rate;
+          s.tpsApprox = true;
+        }
+        if (u.reasoning > u.output) s.stream = "reasoning";
+        // Usage lands late and out of turn order, so it never decides whether Claude is still
+        // working: only tool.start, idle (Stop) and error end WORKING.
+        s.lastFinish = sig.finish;
+        return;
+      }
       if (sig.usage) {
         const u = sig.usage;
         s.usage = u;
@@ -309,6 +382,8 @@ export function applySignal(s: SimState, sig: Signal): void {
       return;
     }
     case "error": {
+      stopEstimating(s);
+      s.stepStarts = [];
       s.flashes.push({ kind: "error", bornTick: s.tick });
       s.tools.clear();
       s.stepOpen = false;
@@ -318,6 +393,7 @@ export function applySignal(s: SimState, sig: Signal): void {
       return;
     }
     case "idle": {
+      stopEstimating(s);
       if (!s.draining) flushBank(s);
       s.tools.clear();
       s.stepOpen = false;
@@ -329,10 +405,12 @@ export function applySignal(s: SimState, sig: Signal): void {
       return;
     }
     case "reset": {
-      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick };
+      const keep = { calib: s.calib, overrides: s.archOverrides, discovered: s.discovered, tick: s.tick, streaming: s.streaming, estTps: s.estTps };
       Object.assign(s, createSim(sig.sessionKey, keep.overrides));
       s.calib = keep.calib;
       s.discovered = keep.discovered;
+      s.streaming = keep.streaming;
+      s.estTps = keep.estTps;
       s.tick = keep.tick;
       s.phaseTick = keep.tick;
       s.lastSignalTick = keep.tick;
@@ -346,12 +424,22 @@ export function step(s: SimState): void {
   s.tick++;
   const t = s.tick;
 
+  // Non-streaming host: after a short prefill window, show WORKING at the learned pace (≈).
+  if (!s.streaming && !s.estimating && s.stepOpen && s.phase === "prefill" && s.tools.size === 0 &&
+      t - (s.prefillTick ?? t) >= EST_PREFILL_TICKS) {
+    s.estimating = true;
+    s.tps = s.estTps.get(calibKey(s)) ?? DEFAULT_EST_TPS;
+    s.tpsApprox = true;
+    setPhase(s, "decode");
+  }
+  if (s.estimating) s.bank += s.tps / TICK_HZ;
+
   // Pulse emitter (SPEC §9.3).
   const emitting = s.phase === "decode" || s.draining;
   if (emitting && s.bank >= 1 && t - s.lastEmitTick >= PULSE_MIN_GAP && s.pulses.length < MAX_PULSES) {
     const per = Math.max(1, Math.ceil(s.tps / 10));
     const take = Math.min(s.bank, s.bank > per * 4 ? Math.ceil(s.bank / 4) : per);
-    spawnPulse(s, take);
+    spawnPulse(s, take, s.estimating);
   }
   if (s.draining && s.bank < 1) {
     if (s.bank > 0) spawnPulse(s, s.bank);
@@ -384,7 +472,7 @@ export function step(s: SimState): void {
 /** Tokens of pulses still in flight (not yet landed in the grid). */
 export function inflightTokens(s: Readonly<SimState>): number {
   let n = 0;
-  for (const p of s.pulses) if (s.tick - p.bornTick < p.sweepTicks) n += p.tokens;
+  for (const p of s.pulses) if (!p.est && s.tick - p.bornTick < p.sweepTicks) n += p.tokens;
   return n;
 }
 

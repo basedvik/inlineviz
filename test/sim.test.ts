@@ -242,3 +242,88 @@ describe("driver + emitter", () => {
     expect(s.tick).toBe(2);
   });
 });
+
+describe("non-streaming hosts (estimate mode)", () => {
+  const base: [number, SignalBody][] = [
+    [0, { t: "mode", streaming: false }],
+    [0, { t: "model", model: { providerID: "anthropic", modelID: "claude-x" } }],
+    [1, { t: "turn.start" }],
+    [1, { t: "step.start" }],
+  ];
+
+  test("EstimatesWhileWorkingButNeverCountsEstimates", () => {
+    const s = run(base, 90);
+    expect(s.phase).toBe("decode");
+    expect(s.estimating).toBe(true);
+    expect(s.tpsApprox).toBe(true);
+    expect(s.nextPulseIndex).toBeGreaterThan(3); // pulses are flowing
+    expect(s.genTotal).toBe(0); // …but none of them are real tokens
+    expect(contextView(s).generated.length).toBe(0);
+  });
+
+  test("RealUsageLandsExactlyAndTeachesPace", () => {
+    const s = run([...base, [91, { t: "step.end", usage: usage({ input: 10, cacheRead: 5000, output: 300, reasoning: 100 }) }], [92, { t: "idle" }]], 93);
+    expect(s.estimating).toBe(false);
+    expect(s.bank).toBe(0);
+    expect(s.genTotal).toBe(400);
+    expect(s.turnReasoning).toBe(100);
+    expect(s.turnText).toBe(300);
+    expect(s.estTps.get("claude-x")).toBeCloseTo(400 / 3, 0); // 400 tokens over 90 ticks = 3 s
+  });
+
+  test("ToolStopsEstimatingAndStepResumesAfterBatch", () => {
+    const s = run([...base, [40, { t: "tool.start", callID: "a", tool: "Bash" }]], 50);
+    expect(s.estimating).toBe(false);
+    expect(s.phase).toBe("tool");
+    expect(s.bank).toBe(0);
+    const s2 = run([
+      ...base,
+      [40, { t: "tool.start", callID: "a", tool: "Bash" }],
+      [45, { t: "step.end", usage: usage({ output: 50 }) }],
+      [50, { t: "tool.end", callID: "a", ok: true }],
+      [51, { t: "step.start" }],
+    ], 51 + 20);
+    expect(s2.estimating).toBe(true); // the model is working again after the tool batch
+    expect(s2.genTotal).toBe(50);
+  });
+
+  test("LateUsageDoesNotStallTheNextStep (live Claude Code order)", () => {
+    // Usage for the tool_use message lands in the transcript AFTER the tools ran and the next
+    // step (PostToolBatch) began — exactly what the live run showed.
+    const ev: [number, SignalBody][] = [
+      ...base,
+      [30, { t: "tool.start", callID: "a", tool: "Bash" }],
+      [40, { t: "tool.end", callID: "a", ok: true }],
+      [41, { t: "step.start" }],
+      [45, { t: "step.end", usage: usage({ output: 88, reasoning: 0 }) }], // late: belongs to step 1
+    ];
+    const s = run(ev, 70);
+    expect(s.estimating).toBe(true); // step 2 is animating, not stuck in PREFILL
+    expect(s.stepOpen).toBe(true);
+    expect(s.genTotal).toBe(88);
+    expect(s.estTps.get("claude-x")).toBeCloseTo(88 / (44 / 30), 0); // measured from step 1's start
+    const done = run([...ev, [80, { t: "step.end", usage: usage({ output: 20 }) }], [81, { t: "idle" }]], 82);
+    expect(done.estimating).toBe(false);
+    expect(done.genTotal).toBe(108);
+  });
+
+  test("PreviousTurnUsageArrivingAfterTheNextPrompt (live: self-started follow-up turn)", () => {
+    const ev: [number, SignalBody][] = [
+      ...base, // step 1 starts at tick 1
+      [30, { t: "idle" }], // Stop: turn 1 done (its usage hasn't landed yet)
+      [40, { t: "turn.start" }],
+      [40, { t: "step.start" }], // Claude starts a follow-up turn on its own
+      [45, { t: "step.end", usage: usage({ output: 120 }) }], // turn 1's late usage
+    ];
+    const s = run(ev, 70);
+    expect(s.estimating).toBe(true); // turn 2 keeps WORKING
+    expect(s.estTps.get("claude-x")).toBeCloseTo(120 / (44 / 30), 0); // paired with turn 1's start
+  });
+
+  test("StreamingHostsUnaffected (deltas, no estimates)", () => {
+    const s = run([[1, { t: "step.start" }], [40, { t: "delta", kind: "text", chars: 40 }]], 60);
+    expect(s.streaming).toBe(true);
+    expect(s.estimating).toBe(false);
+    expect(s.pulses.every((p) => !p.est)).toBe(true);
+  });
+});

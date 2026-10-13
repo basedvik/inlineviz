@@ -541,7 +541,8 @@ function drawHud(
       break;
     }
     case "decode": {
-      const label = s.stream === "reasoning" ? (full ? "REASONING" : "THINK") : "DECODE";
+      // Non-streaming hosts: the model is working but we can't see the stream yet (≈ pace).
+      const label = s.estimating ? "WORKING" : s.stream === "reasoning" ? (full ? "REASONING" : "THINK") : "DECODE";
       phaseColor = s.stream === "reasoning" ? pal.reasoning : pal.textOut;
       if (full) {
         let lay = "";

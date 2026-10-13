@@ -28,6 +28,8 @@ export type Signal =
   | { t: "model"; ts: number; model: ModelRef }
   /** A model's real shape, discovered from its server or Hugging Face (see core/archparse.ts). */
   | { t: "arch"; ts: number; modelID: string; arch: Arch }
+  /** Host capability: `streaming: false` = no live deltas (e.g. Claude Code hooks); the Sim then estimates pace. */
+  | { t: "mode"; ts: number; streaming: boolean }
   | { t: "turn.start"; ts: number }
   | { t: "step.start"; ts: number }
   | { t: "delta"; ts: number; kind: Stream; chars: number; tokens?: number }
@@ -44,7 +46,7 @@ export type SignalType = Signal["t"];
 export type SignalSink = (s: Signal) => void;
 
 const TYPES: ReadonlySet<string> = new Set<SignalType>([
-  "model", "arch", "turn.start", "step.start", "delta", "tool.start", "tool.end",
+  "model", "arch", "mode", "turn.start", "step.start", "delta", "tool.start", "tool.end",
   "step.end", "retry", "error", "idle", "subagents", "reset",
 ]);
 
@@ -62,6 +64,8 @@ export function isSignal(v: unknown): v is Signal {
       const a = o.arch as Record<string, unknown> | undefined;
       return typeof o.modelID === "string" && !!a && (a.kind === "moe" || a.kind === "dense" || a.kind === "unknown");
     }
+    case "mode":
+      return typeof o.streaming === "boolean";
     case "delta":
       return (o.kind === "text" || o.kind === "reasoning") && typeof o.chars === "number";
     case "tool.start":

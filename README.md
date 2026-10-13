@@ -24,31 +24,69 @@ because that loop *is* how an LLM writes.
 
 ## Install
 
-Requires OpenCode **1.18 or newer** (tested on 1.18.32).
+**You need:** OpenCode **1.18 or 1.19** (check with `opencode --version`). OpenCode 2 isn't supported yet
+(it uses a new plugin system, and support is planned). Nothing else is needed: no Bun, no build step.
 
-**Option A, from npm** (once published):
+Installing means adding one line to OpenCode's TUI config file, **`~/.config/opencode/tui.json`**, and
+restarting OpenCode. If the file doesn't exist yet, create it.
 
-```sh
-opencode plugin inlineviz
-```
+### Option 1: from npm (recommended)
 
-or add it to `~/.config/opencode/tui.json` yourself:
+> ⏳ **Not published to npm yet.** Until it is, use Option 2.
 
-```json
-{ "plugin": ["inlineviz@latest"] }
-```
-
-**Option B, straight from GitHub** (works today, no npm needed). In `~/.config/opencode/tui.json`:
+Put this in `~/.config/opencode/tui.json`:
 
 ```json
-{ "plugin": ["github:basedvik/inlineviz"] }
+{
+  "plugin": ["inlineviz@latest"]
+}
 ```
 
-If you already have other TUI plugins, add `inlineviz` to the existing `plugin` list rather than replacing it.
-Then **restart OpenCode**.
+OpenCode downloads it automatically the next time it starts.
 
-> TUI plugins go in **`tui.json`**, not `opencode.json`. The visualizer draws inside OpenCode's interface,
-> so it's a TUI plugin.
+### Option 2: from source (works today)
+
+1. Download it anywhere you like:
+
+   ```sh
+   git clone https://github.com/basedvik/inlineviz.git ~/inlineviz
+   ```
+
+2. Find the folder's full path (you'll need it in the next step):
+
+   ```sh
+   cd ~/inlineviz && pwd        # e.g. /Users/you/inlineviz
+   ```
+
+3. Put that path in `~/.config/opencode/tui.json`, with `file://` in front:
+
+   ```json
+   {
+     "plugin": ["file:///Users/you/inlineviz"]
+   }
+   ```
+
+   Use the full path; `~` doesn't work here.
+
+To update later: `cd ~/inlineviz && git pull`, then restart OpenCode.
+
+### Then
+
+**Restart OpenCode** (quit it completely and open it again).
+
+**Already have other TUI plugins?** Add `inlineviz` to your existing list instead of replacing it:
+
+```json
+{
+  "plugin": [
+    "opencode-tps-meter@latest",
+    "inlineviz@latest"
+  ]
+}
+```
+
+> It must go in **`tui.json`**, not `opencode.json`/`opencode.jsonc`. Those are for a different kind of plugin, and
+> putting it there won't work.
 
 ## Use it
 
@@ -80,11 +118,17 @@ Mixtral, Llama 4 Maverick/Scout, GLM-4.5, Llama 3.x, Qwen2.5-Coder. Add your own
 
 ## Options
 
-Pass options as the second element of the plugin entry:
+Optional. To change settings, wrap the entry in `[ entry, { settings } ]`:
 
 ```json
-{ "plugin": [["inlineviz@latest", { "surface": "sidebar", "fps": 20 }]] }
+{
+  "plugin": [
+    ["inlineviz@latest", { "surface": "sidebar", "fps": 20 }]
+  ]
+}
 ```
+
+(From source it's the same, using your `file://` path in place of `inlineviz@latest`.)
 
 | option | default | |
 |---|---|---|
@@ -101,7 +145,8 @@ Lower `fps` if that matters to you.
 
 ## Uninstall
 
-Remove the `inlineviz` entry from `~/.config/opencode/tui.json` and restart OpenCode.
+Remove the `inlineviz` line from `~/.config/opencode/tui.json` and restart OpenCode.
+If you installed from source, you can also delete the folder you cloned.
 
 ## Standalone CLI (optional)
 
@@ -120,9 +165,15 @@ Ollama, and `WEB-SPEC.md` describes a web-canvas variant.
 
 ## Troubleshooting
 
-- **Nothing shows up:** restart OpenCode after editing `tui.json`, and check the entry is in `tui.json`
-  (not `opencode.json`).
-- **Sidebar is hidden:** widen the terminal, or use `/viz`.
+- **Nothing shows up:**
+  1. Quit OpenCode completely and start it again; plugins load at startup.
+  2. Check the entry is in `~/.config/opencode/tui.json`, not `opencode.json`.
+  3. Check `tui.json` is valid JSON (commas between entries, no trailing comma).
+  4. From source: the path must be the full path with `file://` in front, and the folder must contain
+     `package.json` and `dist/tui.js`.
+  5. Check your version with `opencode --version`. It needs 1.18 or 1.19; OpenCode 2 isn't supported yet.
+- **Sidebar is hidden:** the visualizer lives in OpenCode's session sidebar, which only shows inside a
+  session on a wide enough terminal. Widen the window, or type `/viz` for the full-size view.
 - **Weird spacing around `⬢`/`◉`:** set `"asciiSafe": true`.
 - **Debugging:** `INLINEVIZ_DEBUG=/tmp/inlineviz.log opencode` logs the plugin's geometry and per-frame timing.
 

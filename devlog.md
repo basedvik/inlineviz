@@ -235,8 +235,7 @@ only 1.18.32, the `/opt/homebrew/bin/opencode` symlink resolves to it, `brew inf
   still accepted).
 - `bun run build` → `dist/tui.js` (67 KB ESM, target bun). Externals: `@opentui/*`, `solid-js`,
   `@opencode-ai/*`, so they resolve to OpenCode's runtime copies. `exports` `.` and `./tui` point at
-  `dist/tui.js`. **`dist/` is committed** so `github:basedvik/inlineviz` installs work without a build step
-  (OpenCode installs plugins with npm's Arborist; there's deliberately no `prepare` script).
+  `dist/tui.js`. **`dist/` is committed**, so a plain `git clone` + `file://` path works without a build step.
 - `prepublishOnly` = build + test + typecheck. `files` = dist, src, README, LICENSE (npm pack: 61.5 KB).
 - `@opencode-ai/sdk` moved to `dependencies` (the CLI's `attach` needs it).
 - Added an MIT LICENSE (holder: the GitHub handle `basedvik`) and rewrote the README for users:
@@ -244,3 +243,20 @@ only 1.18.32, the `/opt/homebrew/bin/opencode` symlink resolves to it, `brew inf
   troubleshooting, and the measured CPU cost.
 - Local dev: `tui.json` → `file:///…/opencodeviz` now loads `dist/tui.js`, so **run `bun run build`
   after source changes**.
+
+### Install paths: what was verified (correction)
+- **`github:basedvik/inlineviz` in `tui.json` does NOT work** on OpenCode 1.18.32. In an isolated test
+  (`XDG_CONFIG_HOME` pointing at a config whose only plugin was the GitHub spec), OpenCode created
+  `~/.cache/opencode/packages/github:basedvik/inlineviz/` but never populated the package, and nothing rendered.
+  Plain `npm install github:basedvik/inlineviz` *does* install correctly, so this is OpenCode's
+  installer, not the package. OpenCode's docs list only npm packages and local paths, so the README
+  no longer offers a GitHub spec.
+- An earlier "pass" was a false positive: `OPENCODE_TUI_CONFIG` *adds* a TUI config on top of the global
+  one, so the user's `file://` entry was what rendered. Use `XDG_CONFIG_HOME` for isolated config tests.
+- **Verified:** `file:///abs/path` to a checkout (loads `dist/tui.js` via `exports["./tui"]`).
+  **Not yet verified:** `inlineviz@latest` from npm (not published; tps-meter proves the mechanism).
+- **OpenCode 2 / V2 plugins:** upstream docs say "V1 plugin implementations do not run in V2". V2 CLI
+  plugins use `Plugin.define({ id, setup(context) })` from `@opencode/plugin/tui`, configured in
+  `cli.json` `plugins`, with `sidebar.content` and `session.panel` slots. The CLI's latest release is
+  1.19.0 (V1); `@opencode/plugin` is at 2.0.27. V2 support is parked debt (a new host file + event
+  mapping; the core is reusable). tps-meter's `./tui` + `./v2/tui` layout is the reference.

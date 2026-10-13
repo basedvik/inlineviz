@@ -4,7 +4,7 @@
 //   • /viz → full-size overlay dialog; /viz-demo plays the built-in demo
 //
 // Register in ~/.config/opencode/tui.json:
-//   { "plugin": ["inlineviz@latest"] }   (or "github:basedvik/inlineviz", or a file:// path)
+//   { "plugin": ["inlineviz@latest"] }   (or a "file:///absolute/path/to/inlineviz" checkout)
 //
 // No JSX / Solid compiler: we call @opentui/solid's runtime (createElement,
 // setProp, createComponent) directly, exactly like compiled Solid output.

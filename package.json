@@ -20,7 +20,7 @@
     "moe"
   ],
   "bin": {
-    "inlineviz": "./src/hosts/cli.ts"
+    "inlineviz": "src/hosts/cli.ts"
   },
   "exports": {
     ".": {

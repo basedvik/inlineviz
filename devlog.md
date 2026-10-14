@@ -385,3 +385,15 @@ would become real.
   lives in `claude-code/` (manifest, hooks, commands, launcher, a copy of `dist/inlineviz.mjs`; no package.json
   or lockfile) and the root marketplace points at `./claude-code`: **184 KB**. `build:cli` refreshes the copy;
   tests guard the copy and the absence of dependency manifests.
+
+## Parked (2026-10-14): other harnesses
+
+- **Codex** (0.162.1 installed): `~/.codex/sessions/**/rollout-*.jsonl` has everything except live tokens:
+  `task_started` / `task_complete` (incl. `time_to_first_token_ms`, `duration_ms`), per-response `token_count`
+  (input, cached_input, output, reasoning_output, `model_context_window`), tool calls with `call_id`/`name` and
+  `item_completed` start/end ms. Plan: `inlineviz codex` tails the newest rollout (zero setup); decode rate is
+  the per-response average (`≈`). Unverified: whether the file is appended live during a turn (needs one tiny
+  `codex exec` test, which uses the user's quota; not run).
+- **Claude Code**: no in-UI plugin surface; hooks (prompt/tool/stop) + transcript tail for usage → separate
+  pane with phases, tools, usage; decode estimated (`≈`). SPEC.md §14 has the mapping.
+- Both: same standalone pane renderer; only new adapters.
